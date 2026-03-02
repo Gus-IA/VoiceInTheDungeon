@@ -12,6 +12,9 @@ const speakBtn = document.getElementById("speakBtn");
 const statusDiv = document.getElementById("status");
 const textInput = document.getElementById("textInput");
 const sendBtn = document.getElementById("sendBtn");
+const saveBtn = document.getElementById("saveBtn");
+const loadBtn = document.getElementById("loadBtn");
+const SAVE_KEY = "voice-in-the-dungeon-save-1";
 let state = null;
 let recognizing = false;
 function appendLog(who, text) {
@@ -55,6 +58,42 @@ function sendCommand(text) {
             appendLog("juego", "Hay un problema al hablar con el servidor.");
         }
     });
+}
+if (saveBtn) {
+    saveBtn.onclick = () => {
+        if (!state) {
+            setStatus("No hay partida que guardar todavía.");
+            return;
+        }
+        try {
+            localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+            setStatus("Partida guardada en este navegador.");
+        }
+        catch (e) {
+            console.error(e);
+            setStatus("No se ha podido guardar la partida.");
+        }
+    };
+}
+if (loadBtn) {
+    loadBtn.onclick = () => {
+        try {
+            const raw = localStorage.getItem(SAVE_KEY);
+            if (!raw) {
+                setStatus("No se ha encontrado ninguna partida guardada.");
+                return;
+            }
+            const loaded = JSON.parse(raw);
+            state = loaded;
+            appendLog("juego", "Has cargado una partida guardada.");
+            // Forzamos una descripción de la sala actual con el estado cargado
+            sendCommand("mirar");
+        }
+        catch (e) {
+            console.error(e);
+            setStatus("No se ha podido cargar la partida.");
+        }
+    };
 }
 function setupSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
