@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Voice in the Dungeon - Proto</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        background: #050816;
+        color: #e5e7eb;
+      }
+      h1 {
+        text-align: center;
+        margin-bottom: 1rem;
+      }
+      #log {
+        border-radius: 0.5rem;
+        border: 1px solid #4b5563;
+        padding: 1rem;
+        height: 320px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        background: #020617;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+          Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.9rem;
+      }
+      button {
+        margin-top: 1rem;
+        padding: 0.6rem 1.4rem;
+        border-radius: 999px;
+        border: none;
+        cursor: pointer;
+        font-size: 1rem;
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        color: white;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        box-shadow: 0 8px 20px rgba(22, 163, 74, 0.4);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+      .status {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #9ca3af;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Voice in the Dungeon (proto)</h1>
+    <div id="log"></div>
+    <button id="speakBtn">
+      <span>🎙️</span>
+      <span>Hablar</span>
+    </button>
+    <div class="status" id="status"></div>
+    <script type="module" src="/static/main.js"></script>
+  </body>
+</html>
+
