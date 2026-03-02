@@ -6,6 +6,8 @@ type GameState = {
 const logDiv = document.getElementById("log") as HTMLDivElement | null;
 const speakBtn = document.getElementById("speakBtn") as HTMLButtonElement | null;
 const statusDiv = document.getElementById("status") as HTMLDivElement | null;
+const textInput = document.getElementById("textInput") as HTMLInputElement | null;
+const sendBtn = document.getElementById("sendBtn") as HTMLButtonElement | null;
 
 let state: GameState | null = null;
 let recognizing = false;
@@ -102,5 +104,23 @@ if (recognition && speakBtn) {
       recognition.start();
     }
   };
+}
+
+if (sendBtn && textInput) {
+  const sendText = () => {
+    const value = textInput.value.trim();
+    if (!value) return;
+    sendCommand(value);
+    textInput.value = "";
+  };
+
+  sendBtn.onclick = sendText;
+
+  textInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      sendText();
+    }
+  });
 }
 

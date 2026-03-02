@@ -10,6 +10,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 const logDiv = document.getElementById("log");
 const speakBtn = document.getElementById("speakBtn");
 const statusDiv = document.getElementById("status");
+const textInput = document.getElementById("textInput");
+const sendBtn = document.getElementById("sendBtn");
 let state = null;
 let recognizing = false;
 function appendLog(who, text) {
@@ -98,4 +100,20 @@ if (recognition && speakBtn) {
             recognition.start();
         }
     };
+}
+if (sendBtn && textInput) {
+    const sendText = () => {
+        const value = textInput.value.trim();
+        if (!value)
+            return;
+        sendCommand(value);
+        textInput.value = "";
+    };
+    sendBtn.onclick = sendText;
+    textInput.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+            ev.preventDefault();
+            sendText();
+        }
+    });
 }
