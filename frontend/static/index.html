@@ -2,89 +2,231 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <title>Voice in the Dungeon - Proto</title>
+    <title>Voice in the Dungeon</title>
     <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
           sans-serif;
-        max-width: 800px;
-        margin: 2rem auto;
-        padding: 0 1rem;
-        background: #050816;
+        min-height: 100vh;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background:
+          radial-gradient(circle at top, rgba(34, 197, 94, 0.15), transparent 55%),
+          radial-gradient(circle at bottom, rgba(15, 23, 42, 0.9), #020617);
         color: #e5e7eb;
       }
-      h1 {
-        text-align: center;
+      .frame {
+        width: 100%;
+        max-width: 900px;
+        margin: 2rem 1rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: radial-gradient(circle at top left, #020617, #020617 45%, #030712);
+        box-shadow:
+          0 24px 60px rgba(15, 23, 42, 0.9),
+          0 0 0 1px rgba(15, 23, 42, 0.8);
+        padding: 1.5rem 1.75rem 1.75rem;
+        position: relative;
+        overflow: hidden;
+      }
+      .frame::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at top center, rgba(34, 197, 94, 0.14), transparent 55%);
+        pointer-events: none;
+        opacity: 0.9;
+      }
+      .frame-inner {
+        position: relative;
+        z-index: 1;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
         margin-bottom: 1rem;
       }
+      .title-block {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin: 0;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #e5e7eb;
+      }
+      .subtitle {
+        font-size: 0.8rem;
+        color: #9ca3af;
+      }
+      .badge {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        padding: 0.25rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid rgba(34, 197, 94, 0.4);
+        background: rgba(15, 23, 42, 0.9);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: #bbf7d0;
+      }
+      .badge-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #22c55e;
+        box-shadow: 0 0 12px rgba(34, 197, 94, 0.9);
+      }
       #log {
-        border-radius: 0.5rem;
-        border: 1px solid #4b5563;
+        border-radius: 0.75rem;
+        border: 1px solid rgba(55, 65, 81, 0.9);
         padding: 1rem;
         height: 320px;
         overflow-y: auto;
         white-space: pre-wrap;
-        background: #020617;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+        background: radial-gradient(circle at top left, #020617, #020617 40%, #020617);
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.9);
         font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
           Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size: 0.9rem;
       }
       button {
-        margin-top: 1rem;
+        margin-top: 0.1rem;
         padding: 0.6rem 1.4rem;
         border-radius: 999px;
         border: none;
         cursor: pointer;
-        font-size: 1rem;
+        font-size: 0.95rem;
         background: linear-gradient(135deg, #22c55e, #16a34a);
         color: white;
         font-weight: 600;
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 0.4rem;
         box-shadow: 0 8px 20px rgba(22, 163, 74, 0.4);
+        white-space: nowrap;
       }
       button:disabled {
         opacity: 0.6;
         cursor: not-allowed;
         box-shadow: none;
       }
+      .controls-row {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .input {
+        flex: 1 1 220px;
+        padding: 0.55rem 0.85rem;
+        border-radius: 999px;
+        border: 1px solid #4b5563;
+        background: #020617;
+        color: #e5e7eb;
+        outline: none;
+        font-size: 0.9rem;
+      }
+      .input::placeholder {
+        color: #6b7280;
+      }
+      #sendBtn {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4);
+      }
       .status {
-        margin-top: 0.5rem;
-        font-size: 0.85rem;
+        margin-top: 0.6rem;
+        font-size: 0.8rem;
         color: #9ca3af;
+      }
+      .hint-row {
+        margin-top: 0.75rem;
+        font-size: 0.78rem;
+        color: #9ca3af;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+      .hint-label {
+        opacity: 0.9;
+      }
+      .hint-pill {
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        border: 1px solid rgba(75, 85, 99, 0.9);
+        background: rgba(15, 23, 42, 0.9);
+      }
+      @media (max-width: 640px) {
+        .frame {
+          margin: 1rem;
+          padding: 1.1rem 1.1rem 1.3rem;
+        }
+        header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
       }
     </style>
   </head>
   <body>
-    <h1>Voice in the Dungeon (proto)</h1>
-    <div id="log"></div>
-    <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap">
-      <button id="speakBtn">
-        <span>🎙️</span>
-        <span>Hablar</span>
-      </button>
+    <div class="frame">
+      <div class="frame-inner">
+        <header>
+          <div class="title-block">
+            <h1>Voice in the Dungeon</h1>
+            <div class="subtitle">Aventura de voz en una mazmorra oscura</div>
+          </div>
+          <div class="badge">
+            <span class="badge-dot"></span>
+            PROTOTIPO
+          </div>
+        </header>
+        <div id="log"></div>
+        <div class="controls-row">
+          <button id="speakBtn">
+            <span>🎙️</span>
+            <span>Hablar</span>
+          </button>
       <input
         id="textInput"
         type="text"
         placeholder="Escribe un comando (ej. 'mirar', 'coger linterna')"
-        style="
-          flex: 1 1 220px;
-          padding: 0.5rem 0.75rem;
-          border-radius: 999px;
-          border: 1px solid #4b5563;
-          background: #020617;
-          color: #e5e7eb;
-          outline: none;
-        "
+            class="input"
       />
-      <button id="sendBtn" style="background: #3b82f6; box-shadow: 0 8px 20px rgba(59,130,246,0.4);">
-        Enviar
-      </button>
+          <button id="sendBtn">
+            Enviar
+          </button>
+        </div>
+        <div class="status" id="status"></div>
+        <div class="hint-row">
+          <span class="hint-label">Prueba con:</span>
+          <span class="hint-pill">"mirar"</span>
+          <span class="hint-pill">"coger linterna"</span>
+          <span class="hint-pill">"encender linterna"</span>
+          <span class="hint-pill">"ir norte"</span>
+          <span class="hint-pill">"ayuda"</span>
+        </div>
+      </div>
+      <script type="module" src="/static/main.js"></script>
     </div>
-    <div class="status" id="status"></div>
-    <script type="module" src="/static/main.js"></script>
   </body>
 </html>
 
