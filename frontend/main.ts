@@ -1,7 +1,4 @@
-type GameState = {
-  room: string;
-  inventory: string[];
-};
+import { GameState, saveGameState, loadGameState } from "./state.js";
 
 const logDiv = document.getElementById("log") as HTMLDivElement | null;
 const speakBtn = document.getElementById("speakBtn") as HTMLButtonElement | null;
@@ -10,8 +7,6 @@ const textInput = document.getElementById("textInput") as HTMLInputElement | nul
 const sendBtn = document.getElementById("sendBtn") as HTMLButtonElement | null;
 const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement | null;
 const loadBtn = document.getElementById("loadBtn") as HTMLButtonElement | null;
-
-const SAVE_KEY = "voice-in-the-dungeon-save-1";
 
 let state: GameState | null = null;
 let recognizing = false;
@@ -65,11 +60,10 @@ if (saveBtn) {
       setStatus("No hay partida que guardar todavía.");
       return;
     }
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    const ok = saveGameState(state);
+    if (ok) {
       setStatus("Partida guardada en este navegador.");
-    } catch (e) {
-      console.error(e);
+    } else {
       setStatus("No se ha podido guardar la partida.");
     }
   };
@@ -77,21 +71,15 @@ if (saveBtn) {
 
 if (loadBtn) {
   loadBtn.onclick = () => {
-    try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) {
-        setStatus("No se ha encontrado ninguna partida guardada.");
-        return;
-      }
-      const loaded = JSON.parse(raw) as GameState;
-      state = loaded;
-      appendLog("juego", "Has cargado una partida guardada.");
-      // Forzamos una descripción de la sala actual con el estado cargado
-      sendCommand("mirar");
-    } catch (e) {
-      console.error(e);
-      setStatus("No se ha podido cargar la partida.");
+    const loaded = loadGameState();
+    if (!loaded) {
+      setStatus("No se ha encontrado ninguna partida guardada.");
+      return;
     }
+    state = loaded;
+    appendLog("juego", "Has cargado una partida guardada.");
+    // Forzamos una descripción de la sala actual con el estado cargado
+    sendCommand("mirar");
   };
 }
 

@@ -1,10 +1,21 @@
 from pathlib import Path
+import json
+import logging
+from time import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+
+logger = logging.getLogger("voice_in_the_dungeon")
+if not logger.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+    )
 
 
 app = FastAPI()
@@ -77,11 +88,41 @@ def describe_room(state: dict) -> str:
     return base + extra
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time()
+    response = await call_next(request)
+    duration_ms = (time() - start) * 1000
+
+    log_record = {
+        "event": "http_request",
+        "method": request.method,
+        "path": request.url.path,
+        "status_code": response.status_code,
+        "duration_ms": round(duration_ms, 2),
+    }
+    logger.info(json.dumps(log_record, ensure_ascii=False))
+    return response
+
+
 @app.post("/api/command", response_model=CommandResponse)
 def process_command(body: CommandRequest):
     text = body.text.lower()
     state = body.state or {"room": "inicio", "inventory": []}
     state.setdefault("flashlight_on", False)
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "command_received",
+                "text": text,
+                "room": state.get("room", "inicio"),
+                "inventory": state.get("inventory", []),
+                "flashlight_on": state.get("flashlight_on", False),
+            },
+            ensure_ascii=False,
+        )
+    )
 
     # Ayuda
     if "ayuda" in text or "help" in text:
@@ -158,6 +199,20 @@ def process_command(body: CommandRequest):
 
     else:
         reply = "No entiendo lo que intentas hacer. Di 'ayuda' para ver opciones."
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "command_result",
+                "text": text,
+                "reply": reply,
+                "room": state.get("room", "inicio"),
+                "inventory": state.get("inventory", []),
+                "flashlight_on": state.get("flashlight_on", False),
+            },
+            ensure_ascii=False,
+        )
+    )
 
     return CommandResponse(reply=reply, state=state)
 

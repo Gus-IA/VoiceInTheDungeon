@@ -1,0 +1,13 @@
+{
+  "name": "voice-in-the-dungeon-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^4.8.4",
+    "vitest": "^1.5.0"
+  }
+}
+
