@@ -4,6 +4,7 @@ import logging
 from time import time
 from uuid import uuid4
 from datetime import datetime
+import hashlib
 import sqlite3
 
 from fastapi import FastAPI, Request, HTTPException
@@ -38,6 +39,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "saves.db"
 
+CLIENT_HASH_SALT = "voice_in_the_dungeon_salt_v1"
+
 
 def _init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
@@ -58,6 +61,26 @@ def _init_db() -> None:
 
 
 _init_db()
+
+
+def _anonymized_client_hash(request: Request) -> str:
+    """
+    Devuelve un hash estable (pero anónimo) del cliente a partir de la IP y User-Agent.
+    Pensado para analizar uso sin almacenar datos personales directos.
+    """
+    # Render y otros proxies suelen enviar X-Forwarded-For
+    xff = request.headers.get("x-forwarded-for") or ""
+    if xff:
+        ip = xff.split(",")[0].strip()
+    else:
+        ip = request.client.host if request.client else ""
+
+    user_agent = request.headers.get("user-agent", "")
+
+    base = f"{CLIENT_HASH_SALT}|{ip}|{user_agent}"
+    digest = hashlib.sha256(base.encode("utf-8")).hexdigest()
+    # Suficiente para agrupar sesiones sin ser excesivamente identificable
+    return digest[:16]
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -131,6 +154,13 @@ def describe_room(state: dict) -> str:
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time()
+    request_id = str(uuid4())
+    client_hash = _anonymized_client_hash(request)
+
+    # Guardamos contexto en el request para reutilizarlo en otros logs
+    request.state.request_id = request_id
+    request.state.client_hash = client_hash
+
     response = await call_next(request)
     duration_ms = (time() - start) * 1000
 
@@ -140,13 +170,16 @@ async def log_requests(request: Request, call_next):
         "path": request.url.path,
         "status_code": response.status_code,
         "duration_ms": round(duration_ms, 2),
+        "request_id": request_id,
+        "client_hash": client_hash,
+        "user_agent": request.headers.get("user-agent", ""),
     }
     logger.info(json.dumps(log_record, ensure_ascii=False))
     return response
 
 
 @app.post("/api/command", response_model=CommandResponse)
-def process_command(body: CommandRequest):
+def process_command(body: CommandRequest, request: Request):
     text = body.text.lower()
     state = body.state or {"room": "inicio", "inventory": []}
     state.setdefault("flashlight_on", False)
@@ -159,6 +192,8 @@ def process_command(body: CommandRequest):
                 "room": state.get("room", "inicio"),
                 "inventory": state.get("inventory", []),
                 "flashlight_on": state.get("flashlight_on", False),
+                "request_id": getattr(request.state, "request_id", None),
+                "client_hash": getattr(request.state, "client_hash", None),
             },
             ensure_ascii=False,
         )
@@ -249,6 +284,8 @@ def process_command(body: CommandRequest):
                 "room": state.get("room", "inicio"),
                 "inventory": state.get("inventory", []),
                 "flashlight_on": state.get("flashlight_on", False),
+                "request_id": getattr(request.state, "request_id", None),
+                "client_hash": getattr(request.state, "client_hash", None),
             },
             ensure_ascii=False,
         )
@@ -258,7 +295,7 @@ def process_command(body: CommandRequest):
 
 
 @app.post("/api/save", response_model=SaveGameOut)
-def save_game(body: SaveGameIn) -> SaveGameOut:
+def save_game(body: SaveGameIn, request: Request) -> SaveGameOut:
     """
     Guarda una partida en el backend y devuelve un identificador opaco.
     Pensado para prototipo y despliegues sencillos (p. ej. Render con volumen de datos).
@@ -281,6 +318,8 @@ def save_game(body: SaveGameIn) -> SaveGameOut:
             {
                 "event": "game_saved",
                 "save_id": save_id,
+                "request_id": getattr(request.state, "request_id", None),
+                "client_hash": getattr(request.state, "client_hash", None),
             },
             ensure_ascii=False,
         )
@@ -290,7 +329,7 @@ def save_game(body: SaveGameIn) -> SaveGameOut:
 
 
 @app.get("/api/save/{save_id}", response_model=LoadGameOut)
-def load_game(save_id: str) -> LoadGameOut:
+def load_game(save_id: str, request: Request) -> LoadGameOut:
     """
     Recupera una partida previamente guardada por su identificador.
     """
@@ -312,6 +351,8 @@ def load_game(save_id: str) -> LoadGameOut:
                 "event": "game_loaded",
                 "save_id": save_id,
                 "room": state.get("room", "inicio"),
+                "request_id": getattr(request.state, "request_id", None),
+                "client_hash": getattr(request.state, "client_hash", None),
             },
             ensure_ascii=False,
         )
