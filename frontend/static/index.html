@@ -106,6 +106,10 @@
           Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size: 0.9rem;
       }
+      #log:focus-visible {
+        outline: 2px solid #22c55e;
+        outline-offset: 2px;
+      }
       button {
         margin-top: 0.1rem;
         padding: 0.6rem 1.4rem;
@@ -122,6 +126,30 @@
         gap: 0.4rem;
         box-shadow: 0 8px 20px rgba(22, 163, 74, 0.4);
         white-space: nowrap;
+      }
+      button:focus-visible {
+        outline: 2px solid #facc15;
+        outline-offset: 2px;
+      }
+      button:hover:not(:disabled) {
+        filter: brightness(1.05);
+        transform: translateY(-1px);
+      }
+      #speakBtn {
+        position: relative;
+        overflow: hidden;
+      }
+      #speakBtn::before {
+        content: "";
+        position: absolute;
+        inset: -40%;
+        background: radial-gradient(circle at 10% 0%, rgba(34, 197, 94, 0.2), transparent 55%);
+        opacity: 0;
+        transition: opacity 200ms ease-out;
+        pointer-events: none;
+      }
+      #speakBtn.is-listening::before {
+        opacity: 1;
       }
       button:disabled {
         opacity: 0.6;
@@ -144,6 +172,11 @@
         color: #e5e7eb;
         outline: none;
         font-size: 0.9rem;
+      }
+      .input:focus-visible {
+        outline: 2px solid #3b82f6;
+        outline-offset: 2px;
+        border-color: transparent;
       }
       .input::placeholder {
         color: #6b7280;
@@ -174,6 +207,142 @@
         border: 1px solid rgba(75, 85, 99, 0.9);
         background: rgba(15, 23, 42, 0.9);
       }
+      .scene {
+        position: relative;
+        margin-bottom: 1rem;
+        border-radius: 0.9rem;
+        border: 1px solid rgba(30, 64, 175, 0.6);
+        background:
+          radial-gradient(circle at 20% 0%, rgba(56, 189, 248, 0.16), transparent 55%),
+          radial-gradient(circle at 80% 0%, rgba(34, 197, 94, 0.14), transparent 55%),
+          linear-gradient(to bottom, #020617, #020617 40%, #020617);
+        overflow: hidden;
+        padding: 0.9rem 1rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+        gap: 0.75rem;
+      }
+      .scene-description {
+        font-size: 0.8rem;
+        color: #d1d5db;
+      }
+      .scene-description strong {
+        color: #e5e7eb;
+      }
+      .scene-illustration {
+        position: relative;
+        min-height: 110px;
+        border-radius: 0.75rem;
+        background:
+          radial-gradient(circle at 50% 0%, rgba(148, 163, 184, 0.2), transparent 65%),
+          radial-gradient(circle at 50% 70%, rgba(22, 101, 52, 0.7), #020617 78%);
+        box-shadow:
+          inset 0 0 0 1px rgba(15, 23, 42, 0.9),
+          0 15px 35px rgba(15, 23, 42, 0.9);
+        overflow: hidden;
+      }
+      .scene-portal {
+        position: absolute;
+        inset: 12% 26%;
+        border-radius: 999px;
+        background:
+          radial-gradient(circle at 50% 15%, rgba(250, 250, 249, 0.8), transparent 65%),
+          radial-gradient(circle at 50% 65%, rgba(34, 197, 94, 0.3), rgba(6, 78, 59, 0.9));
+        box-shadow:
+          0 0 35px rgba(34, 197, 94, 0.7),
+          0 0 0 1px rgba(15, 23, 42, 0.9);
+      }
+      .scene-steps {
+        position: absolute;
+        inset-inline: 6%;
+        bottom: -6%;
+        height: 40%;
+        background:
+          linear-gradient(to top, rgba(15, 23, 42, 1), transparent 55%),
+          repeating-linear-gradient(
+            to top,
+            rgba(15, 23, 42, 1),
+            rgba(15, 23, 42, 1) 4px,
+            rgba(17, 24, 39, 1) 4px,
+            rgba(17, 24, 39, 1) 8px
+          );
+        opacity: 0.95;
+      }
+      .scene-torch {
+        position: absolute;
+        top: 12%;
+        width: 8px;
+        height: 22px;
+        background: linear-gradient(to bottom, #4b5563, #111827);
+        border-radius: 999px;
+        box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.9);
+      }
+      .scene-torch::before {
+        content: "";
+        position: absolute;
+        top: -9px;
+        left: 50%;
+        width: 18px;
+        height: 18px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+        background: radial-gradient(circle, #facc15, transparent 65%);
+        opacity: 0.9;
+        filter: blur(1px);
+      }
+      .scene-torch-left {
+        left: 18%;
+      }
+      .scene-torch-right {
+        right: 18%;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .scene-torch::before {
+          animation: torch-flicker 2500ms ease-in-out infinite alternate;
+        }
+        .badge-dot {
+          animation: pulse-dot 1600ms ease-out infinite;
+        }
+      }
+      @keyframes torch-flicker {
+        0% {
+          opacity: 0.7;
+          transform: translateX(-50%) scale(0.95);
+        }
+        50% {
+          opacity: 1;
+          transform: translateX(-50%) scale(1.05);
+        }
+        100% {
+          opacity: 0.8;
+          transform: translateX(-50%) scale(1);
+        }
+      }
+      @keyframes pulse-dot {
+        0% {
+          transform: scale(1);
+          box-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
+        }
+        50% {
+          transform: scale(1.2);
+          box-shadow: 0 0 16px rgba(34, 197, 94, 0.95);
+        }
+        100% {
+          transform: scale(1);
+          box-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
+        }
+      }
       @media (max-width: 640px) {
         .frame {
           margin: 1rem;
@@ -182,6 +351,10 @@
         header {
           flex-direction: column;
           align-items: flex-start;
+        }
+        .scene {
+          display: block;
+          grid-template-columns: minmax(0, 1fr);
         }
       }
     </style>
@@ -199,7 +372,27 @@
             PROTOTIPO
           </div>
         </header>
-        <div id="log"></div>
+        <div class="scene" aria-hidden="true">
+          <p class="scene-description">
+            <strong>Despiertas en una cámara de piedra.</strong> Una puerta arqueada se abre
+            hacia la oscuridad, iluminada solo por antorchas verdes que parpadean. Tu voz
+            es la única herramienta para escapar de la mazmorra.
+          </p>
+          <div class="scene-illustration" role="img" aria-label="Ilustración de una puerta de mazmorra iluminada por antorchas verdes">
+            <div class="scene-portal"></div>
+            <div class="scene-steps"></div>
+            <div class="scene-torch scene-torch-left"></div>
+            <div class="scene-torch scene-torch-right"></div>
+          </div>
+        </div>
+        <div
+          id="log"
+          role="log"
+          aria-live="polite"
+          aria-label="Registro de la aventura"
+          tabindex="0"
+        ></div>
+        <label class="sr-only" for="textInput">Escribe un comando para el juego</label>
         <div class="controls-row">
           <button id="speakBtn">
             <span>🎙️</span>
@@ -215,7 +408,12 @@
             Enviar
           </button>
         </div>
-        <div class="status" id="status"></div>
+        <div
+          class="status"
+          id="status"
+          role="status"
+          aria-live="polite"
+        ></div>
         <div class="controls-row" style="margin-top: 0.4rem; justify-content: flex-end">
           <button id="saveBtn" style="background: rgba(15,23,42,0.95); border: 1px solid rgba(55,65,81,0.9); box-shadow: none; font-size: 0.8rem; padding-inline: 1rem;">
             Guardar partida

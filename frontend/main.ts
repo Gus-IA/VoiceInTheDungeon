@@ -88,7 +88,10 @@ function setupSpeechRecognition() {
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (!SpeechRecognition) {
     setStatus("Tu navegador no soporta Web Speech API. Prueba con Chrome.");
-    if (speakBtn) speakBtn.disabled = true;
+    if (speakBtn) {
+      speakBtn.disabled = true;
+      speakBtn.setAttribute("aria-disabled", "true");
+    }
     return null;
   }
 
@@ -99,13 +102,21 @@ function setupSpeechRecognition() {
 
   recognition.onstart = () => {
     recognizing = true;
-    if (speakBtn) speakBtn.textContent = "Escuchando...";
+    if (speakBtn) {
+      speakBtn.textContent = "Escuchando...";
+      speakBtn.setAttribute("aria-pressed", "true");
+      speakBtn.classList.add("is-listening");
+    }
     setStatus("Escuchando, habla ahora...");
   };
 
   recognition.onend = () => {
     recognizing = false;
-    if (speakBtn) speakBtn.textContent = "🎙️ Hablar";
+    if (speakBtn) {
+      speakBtn.textContent = "🎙️ Hablar";
+      speakBtn.setAttribute("aria-pressed", "false");
+      speakBtn.classList.remove("is-listening");
+    }
     setStatus("");
   };
 
