@@ -11,6 +11,16 @@ const loadBtn = document.getElementById("loadBtn") as HTMLButtonElement | null;
 let state: GameState | null = null;
 let recognizing = false;
 
+const LAST_SAVE_ID_KEY = "voice-in-the-dungeon-last-save-id";
+
+type SaveResponse = {
+  save_id: string;
+};
+
+type LoadResponse = {
+  state: GameState;
+};
+
 function appendLog(who: "tú" | "juego", text: string) {
   if (!logDiv) return;
   const prefix = who === "tú" ? "👤 " : "🧙 ";
@@ -55,30 +65,72 @@ async function sendCommand(text: string) {
 }
 
 if (saveBtn) {
-  saveBtn.onclick = () => {
+  saveBtn.onclick = async () => {
     if (!state) {
       setStatus("No hay partida que guardar todavía.");
       return;
     }
+
     const ok = saveGameState(state);
-    if (ok) {
-      setStatus("Partida guardada en este navegador.");
-    } else {
-      setStatus("No se ha podido guardar la partida.");
+
+    try {
+      const res = await fetch("/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Error HTTP al guardar: ${res.status}`);
+      }
+
+      const data = (await res.json()) as SaveResponse;
+      window.localStorage.setItem(LAST_SAVE_ID_KEY, data.save_id);
+
+      setStatus(
+        `Partida guardada en el servidor. Identificador: ${data.save_id} (también se ha guardado localmente).`,
+      );
+    } catch (err) {
+      console.error(err);
+      setStatus(
+        ok
+          ? "Se ha guardado la partida localmente, pero ha fallado el guardado en el servidor."
+          : "No se ha podido guardar la partida ni localmente ni en el servidor.",
+      );
     }
   };
 }
 
 if (loadBtn) {
-  loadBtn.onclick = () => {
+  loadBtn.onclick = async () => {
+    const lastSaveId = window.localStorage.getItem(LAST_SAVE_ID_KEY);
+
+    if (lastSaveId) {
+      try {
+        const res = await fetch(`/api/save/${encodeURIComponent(lastSaveId)}`);
+        if (!res.ok) {
+          throw new Error(`Error HTTP al cargar: ${res.status}`);
+        }
+        const data = (await res.json()) as LoadResponse;
+        state = data.state;
+        appendLog("juego", "Has cargado una partida guardada en el servidor.");
+        sendCommand("mirar");
+        return;
+      } catch (err) {
+        console.error(err);
+        setStatus(
+          "No se ha podido cargar la partida desde el servidor. Intentando cargar una copia local...",
+        );
+      }
+    }
+
     const loaded = loadGameState();
     if (!loaded) {
       setStatus("No se ha encontrado ninguna partida guardada.");
       return;
     }
     state = loaded;
-    appendLog("juego", "Has cargado una partida guardada.");
-    // Forzamos una descripción de la sala actual con el estado cargado
+    appendLog("juego", "Has cargado una partida guardada localmente.");
     sendCommand("mirar");
   };
 }

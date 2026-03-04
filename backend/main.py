@@ -2,8 +2,11 @@ from pathlib import Path
 import json
 import logging
 from time import time
+from uuid import uuid4
+from datetime import datetime
+import sqlite3
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,9 +31,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Servir frontend estático desde / y /static
+# Rutas de proyecto y datos
 PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_DIR = PROJECT_ROOT / "frontend" / "static"
+DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "saves.db"
+
+
+def _init_db() -> None:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS saves (
+                id TEXT PRIMARY KEY,
+                state_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_init_db()
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -47,6 +75,18 @@ class CommandRequest(BaseModel):
 
 class CommandResponse(BaseModel):
     reply: str
+    state: dict
+
+
+class SaveGameIn(BaseModel):
+    state: dict
+
+
+class SaveGameOut(BaseModel):
+    save_id: str
+
+
+class LoadGameOut(BaseModel):
     state: dict
 
 
@@ -215,4 +255,67 @@ def process_command(body: CommandRequest):
     )
 
     return CommandResponse(reply=reply, state=state)
+
+
+@app.post("/api/save", response_model=SaveGameOut)
+def save_game(body: SaveGameIn) -> SaveGameOut:
+    """
+    Guarda una partida en el backend y devuelve un identificador opaco.
+    Pensado para prototipo y despliegues sencillos (p. ej. Render con volumen de datos).
+    """
+    save_id = str(uuid4())
+    now = datetime.utcnow().isoformat() + "Z"
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "INSERT INTO saves (id, state_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (save_id, json.dumps(body.state, ensure_ascii=False), now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "game_saved",
+                "save_id": save_id,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+    return SaveGameOut(save_id=save_id)
+
+
+@app.get("/api/save/{save_id}", response_model=LoadGameOut)
+def load_game(save_id: str) -> LoadGameOut:
+    """
+    Recupera una partida previamente guardada por su identificador.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.execute("SELECT state_json FROM saves WHERE id = ?", (save_id,))
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Partida no encontrada")
+
+    state = json.loads(row[0])
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "game_loaded",
+                "save_id": save_id,
+                "room": state.get("room", "inicio"),
+            },
+            ensure_ascii=False,
+        )
+    )
+
+    return LoadGameOut(state=state)
 
