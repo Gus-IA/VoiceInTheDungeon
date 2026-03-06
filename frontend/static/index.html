@@ -96,15 +96,70 @@
       #log {
         border-radius: 0.75rem;
         border: 1px solid rgba(55, 65, 81, 0.9);
-        padding: 1rem;
+        padding: 0.75rem 1rem;
         height: 320px;
         overflow-y: auto;
-        white-space: pre-wrap;
         background: radial-gradient(circle at top left, #020617, #020617 40%, #020617);
         box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.9);
         font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
           Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.875rem;
+      }
+      .log-sep {
+        height: 0;
+        margin: 0.5rem 0 0.75rem;
+        border-top: 1px solid rgba(71, 85, 105, 0.5);
+        flex-shrink: 0;
+      }
+      .log-entry {
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-start;
+        margin-bottom: 0.5rem;
+        padding: 0.4rem 0.5rem 0.4rem 0.6rem;
+        border-radius: 0.35rem;
+        border-left: 3px solid transparent;
+      }
+      .log-entry:last-child {
+        margin-bottom: 0;
+      }
+      .log-entry--player {
+        border-left-color: #3b82f6;
+        background: rgba(59, 130, 246, 0.08);
+      }
+      .log-entry--game {
+        border-left-color: rgba(34, 197, 94, 0.7);
+        background: rgba(15, 23, 42, 0.5);
+      }
+      .log-meta {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .log-time {
+        font-size: 0.7rem;
+        color: #6b7280;
+      }
+      .log-icon {
         font-size: 0.9rem;
+        line-height: 1;
+      }
+      .log-text {
+        flex: 1;
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.45;
+      }
+      .log-entry--player .log-text {
+        color: #93c5fd;
+        font-weight: 500;
+      }
+      .log-entry--game .log-text {
+        color: #e5e7eb;
+      }
+      .log-entry--game .log-icon {
+        filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.4));
       }
       #log:focus-visible {
         outline: 2px solid #22c55e;
@@ -391,6 +446,7 @@
           aria-live="polite"
           aria-label="Registro de la aventura"
           tabindex="0"
+          class="log-entries"
         ></div>
         <label class="sr-only" for="textInput">Escribe un comando para el juego</label>
         <div class="controls-row">

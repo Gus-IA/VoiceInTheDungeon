@@ -21,10 +21,45 @@ type LoadResponse = {
   state: GameState;
 };
 
+function formatLogTime(): string {
+  const now = new Date();
+  return now.toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function appendLog(who: "tú" | "juego", text: string) {
   if (!logDiv) return;
-  const prefix = who === "tú" ? "👤 " : "🧙 ";
-  logDiv.textContent += `${prefix}${text}\n`;
+  const isPlayer = who === "tú";
+
+  if (isPlayer && logDiv.children.length > 0) {
+    const sep = document.createElement("div");
+    sep.className = "log-sep";
+    sep.setAttribute("aria-hidden", "true");
+    logDiv.appendChild(sep);
+  }
+
+  const entry = document.createElement("div");
+  entry.className = `log-entry log-entry--${isPlayer ? "player" : "game"}`;
+  entry.setAttribute("role", "listitem");
+  const time = document.createElement("span");
+  time.className = "log-time";
+  time.setAttribute("aria-hidden", "true");
+  time.textContent = formatLogTime();
+  const icon = document.createElement("span");
+  icon.className = "log-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = isPlayer ? "👤" : "🧙";
+  const meta = document.createElement("span");
+  meta.className = "log-meta";
+  meta.append(time, icon);
+  const body = document.createElement("span");
+  body.className = "log-text";
+  body.textContent = text;
+  entry.append(meta, body);
+  logDiv.appendChild(entry);
   logDiv.scrollTop = logDiv.scrollHeight;
 }
 
