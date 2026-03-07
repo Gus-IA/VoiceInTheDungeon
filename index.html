@@ -59,12 +59,56 @@
   </head>
   <body>
     <h1>Voice in the Dungeon (proto)</h1>
-    <div id="log"></div>
-    <button id="speakBtn">
-      <span>🎙️</span>
-      <span>Hablar</span>
-    </button>
-    <div class="status" id="status"></div>
+    
+    <div id="authContainer">
+        <div id="authStatus"></div>
+        <button id="logoutBtn" style="display:none; background: #6b7280; font-size: 0.8rem; margin-top: 0;">Cerrar sesión</button>
+    </div>
+
+    <div id="loginModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:100; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; padding:2rem; border-radius:1rem; border:1px solid #4b5563; width:300px; box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+            <h2 id="modalTitle" style="margin-top:0;">Entrar al calabozo</h2>
+            <div style="display:flex; flex-direction:column; gap:1rem;">
+                <input type="text" id="usernameInput" placeholder="Usuario" style="padding:0.6rem; border-radius:0.4rem; border:1px solid #4b5563; background:#0f172a; color:white;">
+                <input type="password" id="passwordInput" placeholder="Contraseña" style="padding:0.6rem; border-radius:0.4rem; border:1px solid #4b5563; background:#0f172a; color:white;">
+                <button id="authBtn">Entrar</button>
+                <button id="toggleAuthMode" style="background:none; box-shadow:none; font-size:0.8rem; text-decoration:underline;">¿No tienes cuenta? Regístrate</button>
+            </div>
+            <div id="authMsg" style="margin-top:1rem; color:#ef4444; font-size:0.85rem;"></div>
+        </div>
+    </div>
+
+    <div id="gameUI" style="display:none;">
+        <div id="log"></div>
+        <div style="display:flex; gap: 1rem; align-items: center;">
+            <button id="speakBtn">
+                <span>🎙️</span>
+                <span>Hablar</span>
+            </button>
+            <div style="flex:1; display:flex; gap: 0.5rem; margin-top: 1rem;">
+                <input type="text" id="textInput" placeholder="Escribe un comando..." style="flex:1; padding:0.6rem; border-radius:999px; border:1px solid #4b5563; background:#0f172a; color:white;">
+                <button id="sendBtn" style="padding: 0.6rem 1rem;">Enviar</button>
+            </div>
+        </div>
+        <div style="margin-top: 1rem; display:flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <button id="saveBtn" style="background:#3b82f6; font-size: 0.85rem;">💾 Guardar</button>
+            <button id="loadBtn" style="background:#8b5cf6; font-size: 0.85rem;">📂 Cargar</button>
+            
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-top: 0;">
+                <label for="langSelect" style="font-size: 0.8rem; color: #94a3b8;">Idioma:</label>
+                <select id="langSelect" style="padding:0.3rem; border-radius:0.4rem; border:1px solid #4b5563; background:#0f172a; color:white; font-size: 0.8rem;">
+                    <option value="es">Español</option>
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="it">Italiano</option>
+                    <option value="pt">Português</option>
+                </select>
+            </div>
+        </div>
+        <div class="status" id="status"></div>
+    </div>
+    
     <script type="module" src="./main.js"></script>
   </body>
 </html>

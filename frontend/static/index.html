@@ -1,494 +1,202 @@
 <!doctype html>
 <html lang="es">
-  <head>
+<head>
     <meta charset="utf-8" />
     <title>Voice in the Dungeon</title>
     <style>
-      :root {
-        color-scheme: dark;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-          sans-serif;
-        min-height: 100vh;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background:
-          radial-gradient(circle at top, rgba(34, 197, 94, 0.15), transparent 55%),
-          radial-gradient(circle at bottom, rgba(15, 23, 42, 0.9), #020617);
-        color: #e5e7eb;
-      }
-      .frame {
-        width: 100%;
-        max-width: 900px;
-        margin: 2rem 1rem;
-        border-radius: 1rem;
-        border: 1px solid rgba(148, 163, 184, 0.4);
-        background: radial-gradient(circle at top left, #020617, #020617 45%, #030712);
-        box-shadow:
-          0 24px 60px rgba(15, 23, 42, 0.9),
-          0 0 0 1px rgba(15, 23, 42, 0.8);
-        padding: 1.5rem 1.75rem 1.75rem;
-        position: relative;
-        overflow: hidden;
-      }
-      .frame::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(circle at top center, rgba(34, 197, 94, 0.14), transparent 55%);
-        pointer-events: none;
-        opacity: 0.9;
-      }
-      .frame-inner {
-        position: relative;
-        z-index: 1;
-      }
-      header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        margin-bottom: 1rem;
-      }
-      .title-block {
-        display: flex;
-        flex-direction: column;
-        gap: 0.15rem;
-      }
-      h1 {
-        font-size: 1.4rem;
-        margin: 0;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #e5e7eb;
-      }
-      .subtitle {
-        font-size: 0.8rem;
-        color: #9ca3af;
-      }
-      .badge {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        padding: 0.25rem 0.7rem;
-        border-radius: 999px;
-        border: 1px solid rgba(34, 197, 94, 0.4);
-        background: rgba(15, 23, 42, 0.9);
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        color: #bbf7d0;
-      }
-      .badge-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 999px;
-        background: #22c55e;
-        box-shadow: 0 0 12px rgba(34, 197, 94, 0.9);
-      }
-      #log {
-        border-radius: 0.75rem;
-        border: 1px solid rgba(55, 65, 81, 0.9);
-        padding: 0.75rem 1rem;
-        height: 320px;
-        overflow-y: auto;
-        background: radial-gradient(circle at top left, #020617, #020617 40%, #020617);
-        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.9);
-        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
-          Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size: 0.875rem;
-      }
-      .log-sep {
-        height: 0;
-        margin: 0.5rem 0 0.75rem;
-        border-top: 1px solid rgba(71, 85, 105, 0.5);
-        flex-shrink: 0;
-      }
-      .log-entry {
-        display: flex;
-        gap: 0.5rem;
-        align-items: flex-start;
-        margin-bottom: 0.5rem;
-        padding: 0.4rem 0.5rem 0.4rem 0.6rem;
-        border-radius: 0.35rem;
-        border-left: 3px solid transparent;
-      }
-      .log-entry:last-child {
-        margin-bottom: 0;
-      }
-      .log-entry--player {
-        border-left-color: #3b82f6;
-        background: rgba(59, 130, 246, 0.08);
-      }
-      .log-entry--game {
-        border-left-color: rgba(34, 197, 94, 0.7);
-        background: rgba(15, 23, 42, 0.5);
-      }
-      .log-meta {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-      }
-      .log-time {
-        font-size: 0.7rem;
-        color: #6b7280;
-      }
-      .log-icon {
-        font-size: 0.9rem;
-        line-height: 1;
-      }
-      .log-text {
-        flex: 1;
-        white-space: pre-wrap;
-        word-break: break-word;
-        line-height: 1.45;
-      }
-      .log-entry--player .log-text {
-        color: #93c5fd;
-        font-weight: 500;
-      }
-      .log-entry--game .log-text {
-        color: #e5e7eb;
-      }
-      .log-entry--game .log-icon {
-        filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.4));
-      }
-      #log:focus-visible {
-        outline: 2px solid #22c55e;
-        outline-offset: 2px;
-      }
-      button {
-        margin-top: 0.1rem;
-        padding: 0.6rem 1.4rem;
-        border-radius: 999px;
-        border: none;
-        cursor: pointer;
-        font-size: 0.95rem;
-        background: linear-gradient(135deg, #22c55e, #16a34a);
-        color: white;
-        font-weight: 600;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.4rem;
-        box-shadow: 0 8px 20px rgba(22, 163, 74, 0.4);
-        white-space: nowrap;
-      }
-      button:focus-visible {
-        outline: 2px solid #facc15;
-        outline-offset: 2px;
-      }
-      button:hover:not(:disabled) {
-        filter: brightness(1.05);
-        transform: translateY(-1px);
-      }
-      #speakBtn {
-        position: relative;
-        overflow: hidden;
-      }
-      #speakBtn::before {
-        content: "";
-        position: absolute;
-        inset: -40%;
-        background: radial-gradient(circle at 10% 0%, rgba(34, 197, 94, 0.2), transparent 55%);
-        opacity: 0;
-        transition: opacity 200ms ease-out;
-        pointer-events: none;
-      }
-      #speakBtn.is-listening::before {
-        opacity: 1;
-      }
-      button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        box-shadow: none;
-      }
-      .controls-row {
-        margin-top: 1rem;
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-      .input {
-        flex: 1 1 220px;
-        padding: 0.55rem 0.85rem;
-        border-radius: 999px;
-        border: 1px solid #4b5563;
-        background: #020617;
-        color: #e5e7eb;
-        outline: none;
-        font-size: 0.9rem;
-      }
-      .input:focus-visible {
-        outline: 2px solid #3b82f6;
-        outline-offset: 2px;
-        border-color: transparent;
-      }
-      .input::placeholder {
-        color: #6b7280;
-      }
-      #sendBtn {
-        background: linear-gradient(135deg, #3b82f6, #2563eb);
-        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4);
-      }
-      .status {
-        margin-top: 0.6rem;
-        font-size: 0.8rem;
-        color: #9ca3af;
-      }
-      .hint-row {
-        margin-top: 0.75rem;
-        font-size: 0.78rem;
-        color: #9ca3af;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-      }
-      .hint-label {
-        opacity: 0.9;
-      }
-      .hint-pill {
-        padding: 0.2rem 0.6rem;
-        border-radius: 999px;
-        border: 1px solid rgba(75, 85, 99, 0.9);
-        background: rgba(15, 23, 42, 0.9);
-      }
-      .scene {
-        position: relative;
-        margin-bottom: 1rem;
-        border-radius: 0.9rem;
-        border: 1px solid rgba(30, 64, 175, 0.6);
-        background:
-          radial-gradient(circle at 20% 0%, rgba(56, 189, 248, 0.16), transparent 55%),
-          radial-gradient(circle at 80% 0%, rgba(34, 197, 94, 0.14), transparent 55%),
-          linear-gradient(to bottom, #020617, #020617 40%, #020617);
-        overflow: hidden;
-        padding: 0.9rem 1rem;
-        display: grid;
-        grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-        gap: 0.75rem;
-      }
-      .scene-description {
-        font-size: 0.8rem;
-        color: #d1d5db;
-      }
-      .scene-description strong {
-        color: #e5e7eb;
-      }
-      .scene-illustration {
-        position: relative;
-        min-height: 110px;
-        border-radius: 0.75rem;
-        background:
-          radial-gradient(circle at 50% 0%, rgba(148, 163, 184, 0.2), transparent 65%),
-          radial-gradient(circle at 50% 70%, rgba(22, 101, 52, 0.7), #020617 78%);
-        box-shadow:
-          inset 0 0 0 1px rgba(15, 23, 42, 0.9),
-          0 15px 35px rgba(15, 23, 42, 0.9);
-        overflow: hidden;
-      }
-      .scene-portal {
-        position: absolute;
-        inset: 12% 26%;
-        border-radius: 999px;
-        background:
-          radial-gradient(circle at 50% 15%, rgba(250, 250, 249, 0.8), transparent 65%),
-          radial-gradient(circle at 50% 65%, rgba(34, 197, 94, 0.3), rgba(6, 78, 59, 0.9));
-        box-shadow:
-          0 0 35px rgba(34, 197, 94, 0.7),
-          0 0 0 1px rgba(15, 23, 42, 0.9);
-      }
-      .scene-steps {
-        position: absolute;
-        inset-inline: 6%;
-        bottom: -6%;
-        height: 40%;
-        background:
-          linear-gradient(to top, rgba(15, 23, 42, 1), transparent 55%),
-          repeating-linear-gradient(
-            to top,
-            rgba(15, 23, 42, 1),
-            rgba(15, 23, 42, 1) 4px,
-            rgba(17, 24, 39, 1) 4px,
-            rgba(17, 24, 39, 1) 8px
-          );
-        opacity: 0.95;
-      }
-      .scene-torch {
-        position: absolute;
-        top: 12%;
-        width: 8px;
-        height: 22px;
-        background: linear-gradient(to bottom, #4b5563, #111827);
-        border-radius: 999px;
-        box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.9);
-      }
-      .scene-torch::before {
-        content: "";
-        position: absolute;
-        top: -9px;
-        left: 50%;
-        width: 18px;
-        height: 18px;
-        transform: translateX(-50%);
-        border-radius: 999px;
-        background: radial-gradient(circle, #facc15, transparent 65%);
-        opacity: 0.9;
-        filter: blur(1px);
-      }
-      .scene-torch-left {
-        left: 18%;
-      }
-      .scene-torch-right {
-        right: 18%;
-      }
-      .sr-only {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
-      }
-      @media (prefers-reduced-motion: no-preference) {
-        .scene-torch::before {
-          animation: torch-flicker 2500ms ease-in-out infinite alternate;
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at top, rgba(34, 197, 94, 0.15), transparent 55%),
+                        radial-gradient(circle at bottom, rgba(15, 23, 42, 0.9), #020617);
+            color: #e5e7eb;
         }
-        .badge-dot {
-          animation: pulse-dot 1600ms ease-out infinite;
-        }
-      }
-      @keyframes torch-flicker {
-        0% {
-          opacity: 0.7;
-          transform: translateX(-50%) scale(0.95);
-        }
-        50% {
-          opacity: 1;
-          transform: translateX(-50%) scale(1.05);
-        }
-        100% {
-          opacity: 0.8;
-          transform: translateX(-50%) scale(1);
-        }
-      }
-      @keyframes pulse-dot {
-        0% {
-          transform: scale(1);
-          box-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
-        }
-        50% {
-          transform: scale(1.2);
-          box-shadow: 0 0 16px rgba(34, 197, 94, 0.95);
-        }
-        100% {
-          transform: scale(1);
-          box-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
-        }
-      }
-      @media (max-width: 640px) {
         .frame {
-          margin: 1rem;
-          padding: 1.1rem 1.1rem 1.3rem;
+            width: 100%;
+            max-width: 900px;
+            margin: 2rem 1rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            background: radial-gradient(circle at top left, #020617, #020617 45%, #030712);
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.9), 0 0 0 1px rgba(15, 23, 42, 0.8);
+            padding: 1.5rem 1.75rem 1.75rem;
+            position: relative;
+            overflow: hidden;
         }
+        .frame-inner { position: relative; z-index: 1; }
         header {
-          flex-direction: column;
-          align-items: flex-start;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1rem;
         }
-        .scene {
-          display: block;
-          grid-template-columns: minmax(0, 1fr);
+        .title-block { display: flex; flex-direction: column; gap: 0.15rem; }
+        h1 { font-size: 1.4rem; margin: 0; letter-spacing: 0.08em; text-transform: uppercase; color: #e5e7eb; }
+        .subtitle { font-size: 0.8rem; color: #9ca3af; }
+        .badge {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            padding: 0.25rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid rgba(34, 197, 94, 0.4);
+            background: rgba(15, 23, 42, 0.9);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: #bbf7d0;
         }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="frame">
-      <div class="frame-inner">
-        <header>
-          <div class="title-block">
-            <h1>Voice in the Dungeon</h1>
-            <div class="subtitle">Aventura de voz en una mazmorra oscura</div>
-          </div>
-          <div class="badge">
-            <span class="badge-dot"></span>
-            PROTOTIPO
-          </div>
-        </header>
-        <div class="scene" aria-hidden="true">
-          <p class="scene-description">
-            <strong>Despiertas en una cámara de piedra.</strong> Una puerta arqueada se abre
-            hacia la oscuridad, iluminada solo por antorchas verdes que parpadean. Tu voz
-            es la única herramienta para escapar de la mazmorra.
-          </p>
-          <div class="scene-illustration" role="img" aria-label="Ilustración de una puerta de mazmorra iluminada por antorchas verdes">
-            <div class="scene-portal"></div>
-            <div class="scene-steps"></div>
-            <div class="scene-torch scene-torch-left"></div>
-            <div class="scene-torch scene-torch-right"></div>
-          </div>
-        </div>
-        <div
-          id="log"
-          role="log"
-          aria-live="polite"
-          aria-label="Registro de la aventura"
-          tabindex="0"
-          class="log-entries"
-        ></div>
-        <label class="sr-only" for="textInput">Escribe un comando para el juego</label>
-        <div class="controls-row">
-          <button id="speakBtn">
-            <span>🎙️</span>
-            <span>Hablar</span>
-          </button>
-      <input
-        id="textInput"
-        type="text"
-        placeholder="Escribe un comando (ej. 'mirar', 'coger linterna')"
-            class="input"
-      />
-          <button id="sendBtn">
-            Enviar
-          </button>
-        </div>
-        <div
-          class="status"
-          id="status"
-          role="status"
-          aria-live="polite"
-        ></div>
-        <div class="controls-row" style="margin-top: 0.4rem; justify-content: flex-end">
-          <button id="saveBtn" style="background: rgba(15,23,42,0.95); border: 1px solid rgba(55,65,81,0.9); box-shadow: none; font-size: 0.8rem; padding-inline: 1rem;">
-            Guardar partida
-          </button>
-          <button id="loadBtn" style="background: rgba(15,23,42,0.95); border: 1px solid rgba(55,65,81,0.9); box-shadow: none; font-size: 0.8rem; padding-inline: 1rem;">
-            Cargar partida
-          </button>
-        </div>
-        <div class="hint-row">
-          <span class="hint-label">Prueba con:</span>
-          <span class="hint-pill">"mirar"</span>
-          <span class="hint-pill">"coger linterna"</span>
-          <span class="hint-pill">"encender linterna"</span>
-          <span class="hint-pill">"ir norte"</span>
-          <span class="hint-pill">"ayuda"</span>
-        </div>
-      </div>
-      <script type="module" src="/static/main.js"></script>
-    </div>
-  </body>
-</html>
+        .badge-dot { width: 7px; height: 7px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 12px rgba(34, 197, 94, 0.9); }
+        #authStatus { font-size: 0.85rem; color: #bbf7d0; margin-right: 1rem; }
+        #log {
+            border-radius: 0.75rem;
+            border: 1px solid rgba(55, 65, 81, 0.9);
+            padding: 0.75rem 1rem;
+            height: 320px;
+            overflow-y: auto;
+            background: radial-gradient(circle at top left, #020617, #020617 40%, #020617);
+            font-family: "JetBrains Mono", monospace;
+            font-size: 0.875rem;
+        }
+        .log-entry { display: flex; gap: 0.5rem; align-items: flex-start; margin-bottom: 0.5rem; padding: 0.4rem 0.6rem; border-radius: 0.35rem; border-left: 3px solid transparent; }
+        .log-entry--player { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.08); }
+        .log-entry--game { border-left-color: rgba(34, 197, 94, 0.7); background: rgba(15, 23, 42, 0.5); }
+        .log-time { font-size: 0.7rem; color: #6b7280; }
+        .log-text { flex: 1; white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
+        .log-entry--player .log-text { color: #93c5fd; font-weight: 500; }
+        button {
+            margin-top: 0.1rem;
+            padding: 0.6rem 1.4rem;
+            border-radius: 999px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.95rem;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            box-shadow: 0 8px 20px rgba(22, 163, 74, 0.4);
+        }
+        #saveBtn, #loadBtn { background: rgba(15,23,42,0.95); border: 1px solid rgba(55,65,81,0.9); box-shadow: none; font-size: 0.8rem; padding: 0.4rem 1rem; }
+        .input { flex: 1; padding: 0.55rem 0.85rem; border-radius: 999px; border: 1px solid #4b5563; background: #020617; color: #e5e7eb; outline: none; }
+        #sendBtn { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .is-listening {
+            background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+            animation: pulse 1.5s infinite;
+            box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4) !important;
+        }
 
+        .status { margin-top: 0.6rem; font-size: 0.8rem; color: #9ca3af; }
+        .scene {
+            position: relative;
+            margin-bottom: 1rem;
+            border-radius: 0.9rem;
+            border: 1px solid rgba(30, 64, 175, 0.6);
+            background: radial-gradient(circle at 20% 0%, rgba(56, 189, 248, 0.16), transparent 55%),
+                        linear-gradient(to bottom, #020617, #020617 40%, #020617);
+            overflow: hidden;
+            padding: 0.9rem 1rem;
+            display: grid;
+            grid-template-columns: 1.6fr 1fr;
+            gap: 0.75rem;
+        }
+
+        /* Modal Auth Styles */
+        #loginModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center; z-index: 1000;
+        }
+        .modal-content {
+            background: #030712; padding: 2.5rem; border-radius: 1.5rem;
+            border: 1px solid rgba(148, 163, 184, 0.2); width: 100%; max-width: 400px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .modal-content input {
+            width: 100%; margin-bottom: 1rem; padding: 0.75rem 1rem;
+            border-radius: 0.75rem; border: 1px solid #334155; background: #0f172a; color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="loginModal" style="display:none;">
+        <div class="modal-content">
+            <h2 id="modalTitle" style="margin-top:0; margin-bottom:1.5rem; text-align:center;">Entrar al calabozo</h2>
+            <input type="text" id="usernameInput" placeholder="Nombre de usuario">
+            <input type="password" id="passwordInput" placeholder="Contraseña">
+            <button id="authBtn" style="width:100%;">Entrar</button>
+            <button id="toggleAuthMode" style="background:none; box-shadow:none; font-size:0.85rem; width:100%; text-decoration:underline; color:#94a3b8; margin-top:0.5rem;">¿No tienes cuenta? Regístrate</button>
+            <div id="authMsg" style="margin-top:1rem; text-align:center; color:#ef4444; font-size:0.85rem;"></div>
+        </div>
+    </div>
+
+    <div class="frame" id="gameUI" style="display:none;">
+        <div class="frame-inner">
+            <header>
+                <div class="title-block">
+                    <h1>Voice in the Dungeon</h1>
+                    <div class="subtitle">Aventura de voz en una mazmorra oscura</div>
+                </div>
+                <div style="display:flex; align-items:center;">
+                    <div id="authStatus"></div>
+                    <button id="logoutBtn" style="display:none; background:#475569; font-size:0.75rem; padding:0.3rem 0.8rem; margin-top:0;">Salir</button>
+                </div>
+            </header>
+            
+            <div class="scene">
+                <p style="font-size:0.85rem; color:#94a3b8; margin:0;">
+                    <strong>Despiertas en una cámara de piedra.</strong> Una puerta arqueada se abre hacia la oscuridad. Tu voz es la única herramienta para escapar.
+                </p>
+                <div style="background:radial-gradient(circle, #064e3b, #020617); border-radius:0.5rem; height:80px; display:flex; align-items:center; justify-content:center; border:1px solid #065f46;">
+                    <span style="font-size:2rem;">👁️</span>
+                </div>
+            </div>
+
+            <div id="log" role="log"></div>
+
+            <div style="margin-top:1rem; display:flex; gap:0.5rem; align-items:center;">
+                <button id="speakBtn">🎙️ Hablar</button>
+                <input id="textInput" type="text" placeholder="Escribe un comando..." class="input">
+                <button id="sendBtn">Enviar</button>
+            </div>
+
+            <div class="status" id="status"></div>
+
+            <div style="margin-top:1rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <button id="saveBtn">💾 Guardar</button>
+                <button id="loadBtn">📂 Cargar</button>
+                <div style="margin-left:auto; display:flex; align-items:center; gap:0.5rem;">
+                    <label for="langSelect" style="font-size:0.8rem; color:#94a3b8;">Idioma:</label>
+                    <select id="langSelect" style="padding:0.3rem; border-radius:0.4rem; background:#0f172a; color:white; border:1px solid #334155; font-size:0.8rem;">
+                        <option value="es">Español</option>
+                        <option value="en">English</option>
+                        <option value="fr">Français</option>
+                        <option value="de">Deutsch</option>
+                        <option value="it">Italiano</option>
+                        <option value="pt">Português</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cargar scripts desde /static para evitar 404 en subrutas -->
+    <script type="module" src="/static/main.js"></script>
+</body>
+</html>

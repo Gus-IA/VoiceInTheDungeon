@@ -1,18 +1,31 @@
+import sys
 from pathlib import Path
 import json
 import logging
+import os
 from time import time
 from uuid import uuid4
 from datetime import datetime
 import hashlib
 import sqlite3
+from typing import Optional
 
-from fastapi import FastAPI, Request, HTTPException
+# Asegurar que el directorio 'backend' esté en el path para los imports
+sys.path.append(str(Path(__file__).parent))
+
+from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
+import auth
+import transcription
+import llm_parser
+
+load_dotenv()
 
 logger = logging.getLogger("voice_in_the_dungeon")
 if not logger.handlers:
@@ -26,7 +39,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción, limita los orígenes permitidos
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,26 +51,166 @@ STATIC_DIR = PROJECT_ROOT / "frontend" / "static"
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "saves.db"
+UPLOAD_DIR = DATA_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 CLIENT_HASH_SALT = "voice_in_the_dungeon_salt_v1"
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
 
 def _init_db() -> None:
     conn = sqlite3.connect(DB_PATH)
     try:
+        # Tabla de usuarios
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        # Tabla de partidas vinculada a usuario
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS saves (
                 id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
                 state_json TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
             )
             """
         )
         conn.commit()
     finally:
         conn.close()
+
+
+_init_db()
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    payload = auth.decode_access_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales inválidas",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    username: str = payload.get("sub")
+    if username is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales inválidas",
+        )
+    
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.execute("SELECT id, username FROM users WHERE username = ?", (username,))
+        user = cur.fetchone()
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Usuario no encontrado",
+            )
+        return {"id": user[0], "username": user[1]}
+    finally:
+        conn.close()
+
+
+class CommandRequest(BaseModel):
+    text: str
+    state: dict | None = None
+    language: str = "es"
+
+
+class CommandResponse(BaseModel):
+    reply: str
+    state: dict
+
+
+class SaveGameIn(BaseModel):
+    state: dict
+
+
+class SaveGameOut(BaseModel):
+    save_id: str
+
+
+class LoadGameOut(BaseModel):
+    state: dict
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/register")
+def register(user: UserCreate):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        # Verificar si existe
+        cur = conn.execute("SELECT id FROM users WHERE username = ?", (user.username,))
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+        
+        user_id = str(uuid4())
+        hashed_pw = auth.get_password_hash(user.password)
+        now = datetime.utcnow().isoformat() + "Z"
+        
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, user.username, hashed_pw, now),
+        )
+        conn.commit()
+        return {"message": "Usuario registrado con éxito"}
+    finally:
+        conn.close()
+
+
+@app.post("/api/login")
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.execute(
+            "SELECT id, username, password_hash FROM users WHERE username = ?", (form_data.username,)
+        )
+        user = cur.fetchone()
+        if not user or not auth.verify_password(form_data.password, user[2]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Usuario o contraseña incorrectos",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token = auth.create_access_token(data={"sub": user[1]})
+        return {"access_token": access_token, "token_type": "bearer"}
+    finally:
+        conn.close()
+
+
+@app.post("/api/transcribe")
+async def transcribe(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    file_path = UPLOAD_DIR / f"{uuid4()}.webm"
+    with open(file_path, "wb") as buffer:
+        buffer.write(await file.read())
+    
+    result = transcription.transcribe_audio(str(file_path))
+    
+    # Cleanup file
+    if file_path.exists():
+        file_path.unlink()
+        
+    if not result:
+        raise HTTPException(status_code=500, detail="Error en la transcripción")
+        
+    return result
 
 
 _init_db()
@@ -89,28 +242,6 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 def root() -> HTMLResponse:
     index_path = STATIC_DIR / "index.html"
     return HTMLResponse(index_path.read_text(encoding="utf-8"))
-
-
-class CommandRequest(BaseModel):
-    text: str
-    state: dict | None = None
-
-
-class CommandResponse(BaseModel):
-    reply: str
-    state: dict
-
-
-class SaveGameIn(BaseModel):
-    state: dict
-
-
-class SaveGameOut(BaseModel):
-    save_id: str
-
-
-class LoadGameOut(BaseModel):
-    state: dict
 
 
 ROOMS = {
@@ -179,81 +310,106 @@ async def log_requests(request: Request, call_next):
 
 
 @app.post("/api/command", response_model=CommandResponse)
-def process_command(body: CommandRequest, request: Request):
-    text = body.text.lower()
+def process_command(body: CommandRequest, request: Request, user: dict = Depends(get_current_user)):
+    text = body.text.strip()
     state = body.state or {"room": "inicio", "inventory": []}
     state.setdefault("flashlight_on", False)
+    target_lang = body.language
 
     logger.info(
         json.dumps(
             {
                 "event": "command_received",
                 "text": text,
+                "user_id": user["id"],
+                "language": target_lang,
                 "room": state.get("room", "inicio"),
-                "inventory": state.get("inventory", []),
-                "flashlight_on": state.get("flashlight_on", False),
-                "request_id": getattr(request.state, "request_id", None),
-                "client_hash": getattr(request.state, "client_hash", None),
             },
             ensure_ascii=False,
         )
     )
 
-    # Ayuda
-    if "ayuda" in text or "help" in text:
+    # 1. Intentar parsear con LLM
+    llm_result = llm_parser.parse_command_llm(text)
+    intent = llm_result.get("intent") if llm_result else None
+    slots = llm_result.get("slots", {}) if llm_result else {}
+
+    reply = None
+
+    # 2. Lógica de juego basada en Intent
+    if intent == "help" or "ayuda" in text.lower() or "help" in text.lower():
         reply = (
             "Puedes decir cosas como: 'mirar', 'coger linterna', "
             "'inventario', 'encender linterna', 'apagar linterna', "
             "'ir norte/sur/este/oeste' o 'abrir puerta'."
         )
 
-    # Mirar alrededor
-    elif "mirar" in text or "look" in text:
+    elif intent == "look" or "mirar" in text.lower():
         reply = describe_room(state)
 
-    # Coger linterna
-    elif "coger linterna" in text or "take flashlight" in text:
-        if "flashlight" not in state["inventory"]:
-            state["inventory"].append("flashlight")
-            reply = "Coges la linterna. Te sientes un poco más seguro."
-        else:
-            reply = "Ya tienes la linterna."
-
-    # Encender / apagar linterna
-    elif ("encender" in text or "prender" in text) and "linterna" in text:
-        if "flashlight" in state["inventory"]:
-            if state["flashlight_on"]:
-                reply = "La linterna ya está encendida."
+    elif intent == "take" or "coger" in text.lower():
+        item = slots.get("item", "").lower() if slots else ""
+        if "linterna" in text.lower() or item == "flashlight":
+            inventory = state.get("inventory", [])
+            if "flashlight" not in inventory:
+                inventory.append("flashlight")
+                state["inventory"] = inventory
+                reply = "Coges la linterna. Te sientes un poco más seguro."
             else:
-                state["flashlight_on"] = True
-                reply = "Enciendes la linterna. La oscuridad retrocede a tu alrededor."
+                reply = "Ya tienes la linterna."
         else:
-            reply = "No tienes ninguna linterna que encender."
+            reply = "¿Qué quieres coger?"
 
-    elif "apagar" in text and "linterna" in text:
-        if state["flashlight_on"]:
-            state["flashlight_on"] = False
-            reply = "Apagas la linterna. La oscuridad vuelve a envolverte."
+    elif intent == "toggle_light" or "linterna" in text.lower():
+        action = slots.get("action", "").lower() if slots else ""
+        has_flashlight = "flashlight" in state.get("inventory", [])
+        
+        if not has_flashlight:
+            reply = "No tienes ninguna linterna."
         else:
-            reply = "La linterna ya está apagada."
+            # Detectar si quiere encender o apagar si el LLM no fue claro
+            is_on = "encender" in text.lower() or "prender" in text.lower() or action == "on"
+            is_off = "apagar" in text.lower() or action == "off"
+            
+            if is_on:
+                if state.get("flashlight_on"):
+                    reply = "La linterna ya está encendida."
+                else:
+                    state["flashlight_on"] = True
+                    reply = "Enciendes la linterna. La oscuridad retrocede a tu alrededor."
+            elif is_off:
+                if state.get("flashlight_on"):
+                    state["flashlight_on"] = False
+                    reply = "Apagas la linterna. La oscuridad vuelve a envolverte."
+                else:
+                    reply = "La linterna ya está apagada."
+            else:
+                # Toggle
+                state["flashlight_on"] = not state.get("flashlight_on")
+                reply = "Encendida" if state["flashlight_on"] else "Apagada"
 
-    # Inventario
-    elif "inventario" in text or "inventory" in text:
-        if state["inventory"]:
-            reply = "Llevas: " + ", ".join(state["inventory"])
+    elif intent == "inventory" or "inventario" in text.lower():
+        inventory = state.get("inventory", [])
+        if inventory:
+            reply = "Llevas: " + ", ".join(inventory)
         else:
             reply = "No llevas nada."
 
-    # Moverse por direcciones
-    elif "norte" in text or "sur" in text or "este" in text or "oeste" in text:
+    elif intent == "move" or any(d in text.lower() for d in ["norte", "sur", "este", "oeste", "north", "south", "east", "west"]):
         current_room_id = state.get("room", "inicio")
         current_room = ROOMS.get(current_room_id, ROOMS["inicio"])
 
-        direction = None
-        for d in ["norte", "sur", "este", "oeste"]:
-            if d in text:
-                direction = d
-                break
+        direction = slots.get("direction", "").lower() if slots else None
+        # Mapeo inglés -> español para la lógica interna si viene del LLM
+        dir_map = {"north": "norte", "south": "sur", "east": "este", "west": "oeste"}
+        direction = dir_map.get(direction, direction)
+        
+        # Fallback manual si el LLM falla
+        if not direction:
+            for d in ["norte", "sur", "este", "oeste"]:
+                if d in text.lower():
+                    direction = d
+                    break
 
         if direction and direction in current_room["exits"]:
             new_room_id = current_room["exits"][direction]
@@ -262,8 +418,7 @@ def process_command(body: CommandRequest, request: Request):
         else:
             reply = "No parece haber ningún camino en esa dirección."
 
-    # Abrir puerta (alias para ir norte desde la habitación inicial)
-    elif "abrir puerta" in text or ("abrir" in text and "puerta" in text):
+    elif intent == "open_door" or "abrir puerta" in text.lower():
         if state.get("room", "inicio") == "inicio":
             state["room"] = "pasillo"
             reply = (
@@ -272,33 +427,32 @@ def process_command(body: CommandRequest, request: Request):
         else:
             reply = "No ves ninguna puerta que puedas abrir aquí."
 
-    else:
+    if not reply:
         reply = "No entiendo lo que intentas hacer. Di 'ayuda' para ver opciones."
+
+    # 3. Traducir respuesta si es necesario
+    final_reply = llm_parser.translate_reply(reply, target_lang)
 
     logger.info(
         json.dumps(
             {
                 "event": "command_result",
                 "text": text,
-                "reply": reply,
+                "user_id": user["id"],
+                "reply": final_reply,
                 "room": state.get("room", "inicio"),
-                "inventory": state.get("inventory", []),
-                "flashlight_on": state.get("flashlight_on", False),
-                "request_id": getattr(request.state, "request_id", None),
-                "client_hash": getattr(request.state, "client_hash", None),
             },
             ensure_ascii=False,
         )
     )
 
-    return CommandResponse(reply=reply, state=state)
+    return CommandResponse(reply=final_reply, state=state)
 
 
 @app.post("/api/save", response_model=SaveGameOut)
-def save_game(body: SaveGameIn, request: Request) -> SaveGameOut:
+def save_game(body: SaveGameIn, request: Request, user: dict = Depends(get_current_user)) -> SaveGameOut:
     """
-    Guarda una partida en el backend y devuelve un identificador opaco.
-    Pensado para prototipo y despliegues sencillos (p. ej. Render con volumen de datos).
+    Guarda una partida vinculada al usuario.
     """
     save_id = str(uuid4())
     now = datetime.utcnow().isoformat() + "Z"
@@ -306,8 +460,8 @@ def save_game(body: SaveGameIn, request: Request) -> SaveGameOut:
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.execute(
-            "INSERT INTO saves (id, state_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            (save_id, json.dumps(body.state, ensure_ascii=False), now, now),
+            "INSERT INTO saves (id, user_id, state_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (save_id, user["id"], json.dumps(body.state, ensure_ascii=False), now, now),
         )
         conn.commit()
     finally:
@@ -318,6 +472,7 @@ def save_game(body: SaveGameIn, request: Request) -> SaveGameOut:
             {
                 "event": "game_saved",
                 "save_id": save_id,
+                "user_id": user["id"],
                 "request_id": getattr(request.state, "request_id", None),
                 "client_hash": getattr(request.state, "client_hash", None),
             },
@@ -329,19 +484,22 @@ def save_game(body: SaveGameIn, request: Request) -> SaveGameOut:
 
 
 @app.get("/api/save/{save_id}", response_model=LoadGameOut)
-def load_game(save_id: str, request: Request) -> LoadGameOut:
+def load_game(save_id: str, request: Request, user: dict = Depends(get_current_user)) -> LoadGameOut:
     """
-    Recupera una partida previamente guardada por su identificador.
+    Recupera una partida si pertenece al usuario.
     """
     conn = sqlite3.connect(DB_PATH)
     try:
-        cur = conn.execute("SELECT state_json FROM saves WHERE id = ?", (save_id,))
+        cur = conn.execute("SELECT state_json, user_id FROM saves WHERE id = ?", (save_id,))
         row = cur.fetchone()
     finally:
         conn.close()
 
     if not row:
         raise HTTPException(status_code=404, detail="Partida no encontrada")
+    
+    if row[1] != user["id"]:
+        raise HTTPException(status_code=403, detail="No tienes permiso para acceder a esta partida")
 
     state = json.loads(row[0])
 
@@ -350,6 +508,7 @@ def load_game(save_id: str, request: Request) -> LoadGameOut:
             {
                 "event": "game_loaded",
                 "save_id": save_id,
+                "user_id": user["id"],
                 "room": state.get("room", "inicio"),
                 "request_id": getattr(request.state, "request_id", None),
                 "client_hash": getattr(request.state, "client_hash", None),
