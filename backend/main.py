@@ -329,10 +329,12 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
         )
     )
 
-    # 1. Intentar parsear con LLM
-    llm_result = llm_parser.parse_command_llm(text)
+    # 1. Intentar parsear con LLM unificado (Incluye traducción y ambiente si el LLM lo genera)
+    llm_result = llm_parser.parse_command_llm(text, target_lang)
     intent = llm_result.get("intent") if llm_result else None
     slots = llm_result.get("slots", {}) if llm_result else {}
+    llm_reply = llm_result.get("reply") if llm_result else None
+    ambient_whisper = llm_result.get("ambient_whisper") if llm_result else None
 
     reply = None
 
@@ -427,11 +429,18 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
         else:
             reply = "No ves ninguna puerta que puedas abrir aquí."
 
-    if not reply:
-        reply = "No entiendo lo que intentas hacer. Di 'ayuda' para ver opciones."
+    # 3. Respuesta final: Usar la del LLM si existe (ya viene traducida), si no, traducir el fallback corregido
+    if llm_reply and intent != "unknown":
+        final_reply = llm_reply
+    else:
+        # Si el LLM falló o no entendió, usamos nuestra lógica de fallback y la traducimos
+        if not reply:
+            reply = "No entiendo lo que intentas hacer. Di 'ayuda' para ver opciones."
+        final_reply = llm_parser.translate_reply(reply, target_lang)
 
-    # 3. Traducir respuesta si es necesario
-    final_reply = llm_parser.translate_reply(reply, target_lang)
+    # Añadir susurro ambiental a la respuesta si existe
+    if ambient_whisper:
+        final_reply = f"{final_reply}\n\n[AMBIENT: {ambient_whisper}]"
 
     logger.info(
         json.dumps(
@@ -440,6 +449,7 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
                 "text": text,
                 "user_id": user["id"],
                 "reply": final_reply,
+                "ambient": ambient_whisper,
                 "room": state.get("room", "inicio"),
             },
             ensure_ascii=False,
