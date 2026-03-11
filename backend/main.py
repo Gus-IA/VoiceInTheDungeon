@@ -59,8 +59,22 @@ CLIENT_HASH_SALT = "voice_in_the_dungeon_salt_v1"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
 
+def get_db_connection():
+    """
+    Obtiene una conexión a la base de datos. 
+    Soporta PostgreSQL si DATABASE_URL está definida (para Render/Heroku),
+    de lo contrario usa SQLite local.
+    """
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        import psycopg2
+        return psycopg2.connect(db_url)
+    else:
+        return sqlite3.connect(DB_PATH)
+
+
 def _init_db() -> None:
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
         # Tabla de usuarios
         conn.execute(
@@ -87,6 +101,8 @@ def _init_db() -> None:
             """
         )
         conn.commit()
+    except Exception as e:
+        logger.error(f"Error al inicializar la base de datos: {e}")
     finally:
         conn.close()
 
@@ -109,9 +125,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             detail="Credenciales inválidas",
         )
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        cur = conn.execute("SELECT id, username FROM users WHERE username = ?", (username,))
+        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur.execute("SELECT id, username FROM users WHERE username = ?", (username,))
         user = cur.fetchone()
         if user is None:
             raise HTTPException(
@@ -153,10 +170,10 @@ class UserCreate(BaseModel):
 
 @app.post("/api/register")
 def register(user: UserCreate):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        # Verificar si existe
-        cur = conn.execute("SELECT id FROM users WHERE username = ?", (user.username,))
+        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur.execute("SELECT id FROM users WHERE username = ?", (user.username,))
         if cur.fetchone():
             raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
         
@@ -176,9 +193,10 @@ def register(user: UserCreate):
 
 @app.post("/api/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        cur = conn.execute(
+        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur.execute(
             "SELECT id, username, password_hash FROM users WHERE username = ?", (form_data.username,)
         )
         user = cur.fetchone()
@@ -331,6 +349,12 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
 
     # 1. Intentar parsear con LLM unificado (Incluye traducción y ambiente si el LLM lo genera)
     llm_result = llm_parser.parse_command_llm(text, target_lang)
+    
+    # 1.1 Fallback local si el LLM falla o no está configurado
+    if not llm_result:
+        logger.info("Usando fallback local para el comando.")
+        llm_result = llm_parser.local_parse_command(text, target_lang)
+        
     intent = llm_result.get("intent") if llm_result else None
     slots = llm_result.get("slots", {}) if llm_result else {}
     llm_reply = llm_result.get("reply") if llm_result else None
@@ -467,9 +491,10 @@ def save_game(body: SaveGameIn, request: Request, user: dict = Depends(get_curre
     save_id = str(uuid4())
     now = datetime.utcnow().isoformat() + "Z"
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        conn.execute(
+        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur.execute(
             "INSERT INTO saves (id, user_id, state_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
             (save_id, user["id"], json.dumps(body.state, ensure_ascii=False), now, now),
         )
@@ -498,9 +523,10 @@ def load_game(save_id: str, request: Request, user: dict = Depends(get_current_u
     """
     Recupera una partida si pertenece al usuario.
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        cur = conn.execute("SELECT state_json, user_id FROM saves WHERE id = ?", (save_id,))
+        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur.execute("SELECT state_json, user_id FROM saves WHERE id = ?", (save_id,))
         row = cur.fetchone()
     finally:
         conn.close()

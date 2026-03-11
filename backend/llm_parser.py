@@ -1,7 +1,43 @@
+from typing import Dict, Any, Optional
 import os
 import json
 import logging
-from typing import Dict, Any, Optional
+
+KEYWORDS = {
+    "es": {
+        "mirar": "look",
+        "norte": "move",
+        "sur": "move",
+        "este": "move",
+        "oeste": "move",
+        "inventario": "inventory",
+        "coger": "take",
+        "linterna": "toggle_light",
+        "encender": "toggle_light",
+        "apagar": "toggle_light",
+        "ayuda": "help",
+        "abrir": "open_door",
+    },
+    "en": {
+        "look": "look",
+        "north": "move",
+        "south": "move",
+        "east": "move",
+        "west": "move",
+        "inventory": "inventory",
+        "take": "take",
+        "flashlight": "toggle_light",
+        "on": "toggle_light",
+        "off": "toggle_light",
+        "help": "help",
+        "open": "open_door",
+    }
+}
+
+DIRECTIONS = {
+    "norte": "north", "sur": "south", "este": "east", "oeste": "west",
+    "north": "north", "south": "south", "east": "east", "west": "west"
+}
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -81,3 +117,45 @@ def translate_reply(text: str, target_language: str) -> str:
     # Esta función queda deprecada ya que el nuevo parser traduce directamente.
     # Se mantiene por compatibilidad momentánea pero devuelve el texto original.
     return text
+
+def local_parse_command(text: str, language: str = "es") -> Optional[Dict[str, Any]]:
+    """
+    Intento de parseo local basado en palabras clave (keyword fallback).
+    Maneja intents básicos sin depender del LLM.
+    """
+    text_lower = text.lower()
+    lang_keywords = KEYWORDS.get(language, KEYWORDS["es"])
+    
+    found_intent = None
+    for kw, intent in lang_keywords.items():
+        if kw in text_lower:
+            found_intent = intent
+            break
+            
+    if not found_intent:
+        return None
+        
+    slots: Dict[str, Optional[str]] = {"direction": None, "item": None, "action": None}
+    
+    # Extraer dirección
+    for kw_dir, eng_dir in DIRECTIONS.items():
+        if kw_dir in text_lower:
+            slots["direction"] = eng_dir
+            break
+            
+    # Extraer item (linterna)
+    if "linterna" in text_lower or "flashlight" in text_lower:
+        slots["item"] = "flashlight"
+        
+    # Extraer acción
+    if any(x in text_lower for x in ["encender", "prender", "on", "activar"]):
+        slots["action"] = "on"
+    elif any(x in text_lower for x in ["apagar", "off", "desactivar"]):
+        slots["action"] = "off"
+        
+    return {
+        "intent": found_intent,
+        "slots": slots,
+        "reply": None, # La lógica de juego en main.py generará el reply
+        "ambient_whisper": None
+    }

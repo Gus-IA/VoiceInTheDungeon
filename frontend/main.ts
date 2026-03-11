@@ -165,10 +165,34 @@ function setStatus(text: string) {
   statusDiv.textContent = text;
 }
 
-function speakText(text: string) {
+interface SpeakOptions {
+  pitch?: number;
+  rate?: number;
+  voiceName?: string;
+}
+
+function speakText(text: string, options: SpeakOptions = {}) {
   if (!("speechSynthesis" in window)) return;
+  
+  // Cancelar locuciones previas para evitar solapamientos
+  window.speechSynthesis.cancel();
+
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = langSelect?.value || "es";
+  
+  // Aplicar opciones
+  utterance.pitch = options.pitch ?? 1.0;
+  utterance.rate = options.rate ?? 1.0;
+
+  // Intentar encontrar una voz específica si se solicita
+  if (options.voiceName) {
+    const voices = window.speechSynthesis.getVoices();
+    const selectedVoice = voices.find(v => v.name.includes(options.voiceName!));
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+  }
+
   window.speechSynthesis.speak(utterance);
 }
 
@@ -198,7 +222,22 @@ async function sendCommand(text: string) {
     const data = await res.json();
     state = data.state;
     appendLog("juego", data.reply);
-    speakText(data.reply);
+    
+    // Si la respuesta contiene un susurro ambiental (marcado con [AMBIENT: ...]),
+    // lo separamos para usar un tono diferente.
+    const parts = data.reply.split("[AMBIENT:");
+    if (parts.length > 1) {
+      // Narración normal
+      speakText(parts[0].trim(), { pitch: 1.0, rate: 1.0 });
+      
+      // Susurro ambiental (más lento y con tono más bajo/alto para diferenciar)
+      const whisper = parts[1].replace("]", "").trim();
+      setTimeout(() => {
+        speakText(whisper, { pitch: 0.5, rate: 0.8 });
+      }, 500);
+    } else {
+      speakText(data.reply);
+    }
   } catch (err) {
     console.error(err);
     appendLog("juego", "Hay un problema al hablar con el servidor.");
