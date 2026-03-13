@@ -5,6 +5,18 @@ const speakBtn = document.getElementById("speakBtn") as HTMLButtonElement | null
 const statusDiv = document.getElementById("status") as HTMLDivElement | null;
 const textInput = document.getElementById("textInput") as HTMLInputElement | null;
 const sendBtn = document.getElementById("sendBtn") as HTMLButtonElement | null;
+// PRE-CARGAR VOCES PARA EVITAR RETRASOS
+let voicesLoaded = false;
+const preloadVoices = () => {
+  if (window.speechSynthesis.getVoices().length > 0) {
+    voicesLoaded = true;
+    window.speechSynthesis.removeEventListener("voiceschanged", preloadVoices);
+  }
+};
+if (window.speechSynthesis.onvoiceschanged !== undefined) {
+  window.speechSynthesis.addEventListener("voiceschanged", preloadVoices);
+}
+preloadVoices();
 const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement | null;
 const loadBtn = document.getElementById("loadBtn") as HTMLButtonElement | null;
 
@@ -25,18 +37,10 @@ const usernameInput = document.getElementById("usernameInput") as HTMLInputEleme
 const passwordInput = document.getElementById("passwordInput") as HTMLInputElement | null;
 const authMsg = document.getElementById("authMsg") as HTMLDivElement | null;
 const modalTitle = document.getElementById("modalTitle") as HTMLHeadingElement | null;
-const langSelect = document.getElementById("langSelect") as HTMLSelectElement | null;
-
 let isLoginMode = true;
 
-// Detectar idioma del navegador/sistema
-const browserLang = navigator.language.split("-")[0];
-if (langSelect) {
-  const supportedLangs = ["es", "en", "fr", "de", "it", "pt"];
-  if (supportedLangs.indexOf(browserLang) !== -1) {
-    langSelect.value = browserLang;
-  }
-}
+// Idioma del navegador como fallback
+const browserLang = navigator.language.split("-")[0] || "es";
 
 function updateAuthUI() {
   if (token) {
@@ -171,29 +175,109 @@ interface SpeakOptions {
   voiceName?: string;
 }
 
-function speakText(text: string, options: SpeakOptions = {}) {
-  if (!("speechSynthesis" in window)) return;
-  
-  // Cancelar locuciones previas para evitar solapamientos
-  window.speechSynthesis.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = langSelect?.value || "es";
-  
-  // Aplicar opciones
-  utterance.pitch = options.pitch ?? 1.0;
-  utterance.rate = options.rate ?? 1.0;
-
-  // Intentar encontrar una voz específica si se solicita
-  if (options.voiceName) {
-    const voices = window.speechSynthesis.getVoices();
-    const selectedVoice = voices.find(v => v.name.includes(options.voiceName!));
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
+function speakText(text: string, options: { pitch?: number, rate?: number, lang?: string, voiceName?: string, onEnd?: () => void } = {}) {
+  if (!text) {
+    options.onEnd?.();
+    return;
+  }
+  const synth = window.speechSynthesis;
+  if (!synth) {
+    options.onEnd?.();
+    return;
   }
 
-  window.speechSynthesis.speak(utterance);
+  // Mapeo select value -> BCP 47
+  const langMap: Record<string, string> = {
+    "es": "es-ES",
+    "en": "en-US",
+    "fr": "fr-FR",
+    "de": "de-DE",
+    "it": "it-IT",
+    "pt": "pt-PT",
+    "hi": "hi-IN"
+  };
+
+  const startSpeak = () => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    let targetCode = options.lang || browserLang || "es";
+    if (targetCode === "auto") {
+      targetCode = navigator.language.split("-")[0] || "es";
+    }
+
+    const bcp47 = langMap[targetCode] || targetCode;
+    const prefix = bcp47.split("-")[0].toLowerCase();
+    utterance.pitch = options.pitch ?? 1.0;
+    utterance.rate = options.rate ?? 1.0;
+    utterance.lang = bcp47;
+
+    // === SELECCIÓN DE VOZ NATIVA ===
+    const voices = synth.getVoices();
+    console.log(`[VOICE] Target: ${bcp47} (prefix: ${prefix}), Available voices: ${voices.length}`);
+    
+    if (options.voiceName) {
+      const v = voices.find(v => v.name.includes(options.voiceName!));
+      if (v) utterance.voice = v;
+    } else if (voices.length > 0) {
+      let bestVoice: SpeechSynthesisVoice | null = null;
+      let bestScore = -1;
+
+      for (const v of voices) {
+        const vLang = v.lang.toLowerCase();
+        const vPrefix = vLang.split("-")[0];
+        let score = 0;
+
+        if (vPrefix !== prefix) continue;
+
+        score += 10;
+        if (vLang === bcp47.toLowerCase()) score += 5;
+        if (v.localService) score += 3;
+        if (v.name.toLowerCase().includes("google")) score += 2;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestVoice = v;
+        }
+      }
+
+      if (bestVoice) {
+        utterance.voice = bestVoice;
+        utterance.lang = bestVoice.lang;
+        console.log(`[VOICE] ✅ Selected: "${bestVoice.name}" (${bestVoice.lang}), score=${bestScore}`);
+      } else {
+        // No hay voz nativa para este idioma.
+        // NO asignar utterance.voice para que Chrome use su TTS online con el lang correcto.
+        console.log(`[VOICE] ⚠️ No native voice for "${prefix}". Using browser default TTS with lang=${bcp47}`);
+        // Listar qué idiomas SÍ tienen voces disponibles
+        const availableLangs = [...new Set(voices.map(v => v.lang.split("-")[0]))];
+        console.log(`[VOICE] Available language prefixes: ${availableLangs.join(", ")}`);
+      }
+    } else {
+      console.log("[VOICE] ⚠️ No voices loaded at all!");
+    }
+
+    utterance.onend = () => {
+      options.onEnd?.();
+    };
+    utterance.onerror = () => {
+      options.onEnd?.();
+    };
+
+    synth.speak(utterance);
+  };
+
+  // Si las voces ya están listas, hablamos. Si no, esperamos una sola vez.
+  if (voicesLoaded || synth.getVoices().length > 0) {
+    startSpeak();
+  } else {
+    const onReady = () => {
+      synth.removeEventListener("voiceschanged", onReady);
+      voicesLoaded = true;
+      startSpeak();
+    };
+    synth.addEventListener("voiceschanged", onReady);
+    setTimeout(startSpeak, 1500); // Fail-safe
+  }
 }
 
 async function sendCommand(text: string) {
@@ -209,7 +293,7 @@ async function sendCommand(text: string) {
       body: JSON.stringify({ 
         text, 
         state, 
-        language: langSelect?.value || "es" 
+        language: "auto" 
       }),
     });
     if (res.status === 401) {
@@ -222,21 +306,21 @@ async function sendCommand(text: string) {
     const data = await res.json();
     state = data.state;
     appendLog("juego", data.reply);
-    
-    // Si la respuesta contiene un susurro ambiental (marcado con [AMBIENT: ...]),
-    // lo separamos para usar un tono diferente.
-    const parts = data.reply.split("[AMBIENT:");
-    if (parts.length > 1) {
-      // Narración normal
-      speakText(parts[0].trim(), { pitch: 1.0, rate: 1.0 });
-      
-      // Susurro ambiental (más lento y con tono más bajo/alto para diferenciar)
-      const whisper = parts[1].replace("]", "").trim();
-      setTimeout(() => {
-        speakText(whisper, { pitch: 0.5, rate: 0.8 });
-      }, 500);
-    } else {
-      speakText(data.reply);
+
+    // Cancelar cualquier audio anterior antes de empezar el nuevo bloque
+    window.speechSynthesis.cancel();
+
+    // DETERMINAR IDIOMA PARA VOZ
+    const voiceLang = data.detected_language || browserLang || "es";
+
+    // Narrar respuesta
+    speakText(data.reply, { 
+      lang: voiceLang
+    });
+
+    // Detección de Victoria (Visual)
+    if (state && (state as any).game_won) {
+      appendLog("juego", "✨ ¡VICTORIA! ✨");
     }
   } catch (err) {
     console.error(err);

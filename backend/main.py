@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 import auth
 import transcription
 import llm_parser
+from typing import Any
 
 load_dotenv()
 
@@ -127,7 +128,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     
     conn = get_db_connection()
     try:
-        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur = conn.cursor()
         cur.execute("SELECT id, username FROM users WHERE username = ?", (username,))
         user = cur.fetchone()
         if user is None:
@@ -149,6 +150,7 @@ class CommandRequest(BaseModel):
 class CommandResponse(BaseModel):
     reply: str
     state: dict
+    detected_language: str = "es"
 
 
 class SaveGameIn(BaseModel):
@@ -172,7 +174,7 @@ class UserCreate(BaseModel):
 def register(user: UserCreate):
     conn = get_db_connection()
     try:
-        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur = conn.cursor()
         cur.execute("SELECT id FROM users WHERE username = ?", (user.username,))
         if cur.fetchone():
             raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
@@ -195,7 +197,7 @@ def register(user: UserCreate):
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     conn = get_db_connection()
     try:
-        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur = conn.cursor()
         cur.execute(
             "SELECT id, username, password_hash FROM users WHERE username = ?", (form_data.username,)
         )
@@ -285,17 +287,24 @@ ROOMS = {
 
 
 def describe_room(state: dict) -> str:
-    room_id = state.get("room", "inicio")
+    room_id = str(state.get("room", "inicio"))
     room = ROOMS.get(room_id, ROOMS["inicio"])
-    flashlight_on = state.get("flashlight_on", False)
+    flashlight_on = bool(state.get("flashlight_on", False))
 
-    base = room["description"] if flashlight_on else room["description_dark"]
+    base = str(room["description"]) if flashlight_on else str(room["description_dark"])
 
     extra = ""
-    if room_id == "inicio" and "flashlight" not in state.get("inventory", []):
+    inventory = state.get("inventory", [])
+    if not isinstance(inventory, list):
+        inventory = []
+
+    if room_id == "inicio" and "flashlight" not in inventory:
         extra = " En el suelo distingues la silueta de una linterna."
     if room_id == "sala_guardia" and flashlight_on:
-        extra += " Ves un arcón de madera con un candado oxidado."
+        if state.get("game_won"):
+            extra += " El arcón está abierto. Has encontrado el tesoro y la salida."
+        else:
+            extra += " Ves un arcón de madera con un candado oxidado."
 
     return base + extra
 
@@ -318,7 +327,7 @@ async def log_requests(request: Request, call_next):
         "method": request.method,
         "path": request.url.path,
         "status_code": response.status_code,
-        "duration_ms": round(duration_ms, 2),
+        "duration_ms": round(float(duration_ms), 2),
         "request_id": request_id,
         "client_hash": client_hash,
         "user_agent": request.headers.get("user-agent", ""),
@@ -330,8 +339,11 @@ async def log_requests(request: Request, call_next):
 @app.post("/api/command", response_model=CommandResponse)
 def process_command(body: CommandRequest, request: Request, user: dict = Depends(get_current_user)):
     text = body.text.strip()
-    state = body.state or {"room": "inicio", "inventory": []}
-    state.setdefault("flashlight_on", False)
+    raw_state = body.state or {"room": "inicio", "inventory": []}
+    state: dict[str, Any] = dict(raw_state)
+    state["flashlight_on"] = bool(state.get("flashlight_on", False))
+    state["inventory"] = list(state.get("inventory", [])) # type: ignore
+    state["game_won"] = bool(state.get("game_won", False)) # type: ignore
     target_lang = body.language
 
     logger.info(
@@ -348,7 +360,10 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
     )
 
     # 1. Intentar parsear con LLM unificado (Incluye traducción y ambiente si el LLM lo genera)
-    llm_result = llm_parser.parse_command_llm(text, target_lang)
+    # Si el idioma no es español, forzamos a que el LLM traduzca la descripción
+    # pasando la descripción base como prompt si el intent es 'mirar'
+    room_desc = describe_room(state)
+    llm_result = llm_parser.parse_command_llm(text, target_lang, room_desc)
     
     # 1.1 Fallback local si el LLM falla o no está configurado
     if not llm_result:
@@ -360,23 +375,43 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
     llm_reply = llm_result.get("reply") if llm_result else None
     ambient_whisper = llm_result.get("ambient_whisper") if llm_result else None
 
+    # --- NUEVA SECCIÓN: Resolución de Idioma antes de la Lógica ---
+    detected_lang = llm_result.get("language_code") if llm_result else None
+    
+    # Normalización: 'eng' -> 'en', 'french' -> 'fr', etc.
+    if detected_lang:
+        detected_lang = str(detected_lang).lower().strip()
+        if len(detected_lang) > 2:
+            for code, name in llm_parser.LANG_MAP.items():
+                if name.lower() in detected_lang:
+                    detected_lang = code
+                    break
+            detected_lang = detected_lang[:2]
+
+    # Fallback final si no hay detección
+    if not detected_lang or detected_lang in ["au", "no"]: 
+        detected_lang = target_lang if target_lang != "auto" else "es"
+    
+    if len(detected_lang) != 2:
+        detected_lang = "es"
+    # --- FIN Resolución Idioma ---
+
     reply = None
 
     # 2. Lógica de juego basada en Intent
-    if intent == "help" or "ayuda" in text.lower() or "help" in text.lower():
-        reply = (
-            "Puedes decir cosas como: 'mirar', 'coger linterna', "
-            "'inventario', 'encender linterna', 'apagar linterna', "
-            "'ir norte/sur/este/oeste' o 'abrir puerta'."
-        )
+    if intent == "help" or any(kw in text.lower() for kw in ["ayuda", "help", "aide", "hilfe", "aiuto", "ajuda", "ヘルプ"]):
+        reply = llm_parser.HELP_MESSAGES.get(detected_lang, llm_parser.HELP_MESSAGES["es"])
 
     elif intent == "look" or "mirar" in text.lower():
         reply = describe_room(state)
 
     elif intent == "take" or "coger" in text.lower():
-        item = slots.get("item", "").lower() if slots else ""
+        # Asegurar que slots no sea None y que el valor no sea None
+        item = (slots.get("item") or "").lower() if slots else ""
         if "linterna" in text.lower() or item == "flashlight":
-            inventory = state.get("inventory", [])
+            inventory = state.get("inventory")
+            if not isinstance(inventory, list):
+                inventory = []
             if "flashlight" not in inventory:
                 inventory.append("flashlight")
                 state["inventory"] = inventory
@@ -387,7 +422,8 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
             reply = "¿Qué quieres coger?"
 
     elif intent == "toggle_light" or "linterna" in text.lower():
-        action = slots.get("action", "").lower() if slots else ""
+        # Asegurar que slots no sea None y que el valor no sea None
+        action = (slots.get("action") or "").lower() if slots else ""
         has_flashlight = "flashlight" in state.get("inventory", [])
         
         if not has_flashlight:
@@ -414,27 +450,47 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
                 state["flashlight_on"] = not state.get("flashlight_on")
                 reply = "Encendida" if state["flashlight_on"] else "Apagada"
 
-    elif intent == "inventory" or "inventario" in text.lower():
+    elif intent == "inventory" or "inventario" in text.lower() or "inventaire" in text.lower() or "inventar" in text.lower():
         inventory = state.get("inventory", [])
         if inventory:
-            reply = "Llevas: " + ", ".join(inventory)
+            # Localizar nombres de objetos si es posible
+            items_localized = []
+            for item in inventory:
+                if item == "flashlight":
+                    items_localized.append("flashlight" if detected_lang == "en" else "linterna")
+                else:
+                    items_localized.append(item)
+            
+            if detected_lang == "es":
+                reply = "Llevas: " + ", ".join(items_localized)
+            elif detected_lang == "de":
+                reply = "Du trägst: " + ", ".join(items_localized)
+            elif detected_lang == "fr":
+                reply = "Tu portes : " + ", ".join(items_localized)
+            else:
+                reply = "You are carrying: " + ", ".join(items_localized)
         else:
-            reply = "No llevas nada."
+            if detected_lang == "es":
+                reply = "No llevas nada."
+            else:
+                reply = "You are carrying nothing."
 
     elif intent == "move" or any(d in text.lower() for d in ["norte", "sur", "este", "oeste", "north", "south", "east", "west"]):
         current_room_id = state.get("room", "inicio")
         current_room = ROOMS.get(current_room_id, ROOMS["inicio"])
 
-        direction = slots.get("direction", "").lower() if slots else None
-        # Mapeo inglés -> español para la lógica interna si viene del LLM
-        dir_map = {"north": "norte", "south": "sur", "east": "este", "west": "oeste"}
-        direction = dir_map.get(direction, direction)
+        direction = slots.get("direction") if slots else None
+        if direction:
+            direction = str(direction).lower()
         
-        # Fallback manual si el LLM falla
+        # Mapeo universal para la lógica interna
+        direction = llm_parser.DIRECTIONS.get(direction or "", direction)
+        
+        # Fallback manual si el LLM falla o no detectó dirección
         if not direction:
-            for d in ["norte", "sur", "este", "oeste"]:
-                if d in text.lower():
-                    direction = d
+            for kw_dir, eng_dir in llm_parser.DIRECTIONS.items():
+                if kw_dir in text.lower():
+                    direction = eng_dir
                     break
 
         if direction and direction in current_room["exits"]:
@@ -444,27 +500,43 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
         else:
             reply = "No parece haber ningún camino en esa dirección."
 
-    elif intent == "open_door" or "abrir puerta" in text.lower():
-        if state.get("room", "inicio") == "inicio":
+    elif intent == "open_door" or "abrir puerta" in text.lower() or "abrir arcon" in text.lower() or "abrir arcón" in text.lower():
+        current_room_id = state.get("room", "inicio")
+        if current_room_id == "inicio":
             state["room"] = "pasillo"
             reply = (
                 "Abres la puerta con esfuerzo. Cruzas al pasillo.\n" + describe_room(state)
             )
+        elif current_room_id == "sala_guardia":
+            if state.get("flashlight_on"):
+                state["game_won"] = True
+                reply = (
+                    "Forcejeas con el candado oxidado hasta que cede. El arcón se abre revelando "
+                    "un mapa y un túnel secreto que conduce al exterior. ¡Has escapado del calabozo!"
+                )
+            else:
+                reply = "Está demasiado oscuro para intentar abrir nada. Podrías hacerte daño."
         else:
-            reply = "No ves ninguna puerta que puedas abrir aquí."
+            reply = "No ves nada que puedas abrir aquí."
 
-    # 3. Respuesta final: Usar la del LLM si existe (ya viene traducida), si no, traducir el fallback corregido
-    if llm_reply and intent != "unknown":
+    # 4. Respuesta final: Priorizamos 'reply' (lógica de juego) si existe.
+    if reply:
+        # Si ya es un HELP_MESSAGE o INVENTORY, no hace falta re-traducir (evita alucinaciones)
+        already_localized = reply in llm_parser.HELP_MESSAGES.values() or reply.startswith("Llevas:") or reply.startswith("You are carrying:") or reply.startswith("Du trägst:")
+        
+        if already_localized:
+            final_reply = reply
+        else:
+            final_reply = llm_parser.translate_reply(reply, detected_lang)
+    elif llm_reply and intent != "unknown":
         final_reply = llm_reply
     else:
-        # Si el LLM falló o no entendió, usamos nuestra lógica de fallback y la traducimos
-        if not reply:
-            reply = "No entiendo lo que intentas hacer. Di 'ayuda' para ver opciones."
-        final_reply = llm_parser.translate_reply(reply, target_lang)
+        # Si nada funcionó, fallback genérito
+        fallback = "No entiendo lo que intentas hacer. Di 'ayuda' para ver opciones."
+        final_reply = llm_parser.translate_reply(fallback, detected_lang)
 
-    # Añadir susurro ambiental a la respuesta si existe
-    if ambient_whisper:
-        final_reply = f"{final_reply}\n\n[AMBIENT: {ambient_whisper}]"
+    # Limpiar reply
+    final_reply = str(final_reply).strip()
 
     logger.info(
         json.dumps(
@@ -473,14 +545,15 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
                 "text": text,
                 "user_id": user["id"],
                 "reply": final_reply,
-                "ambient": ambient_whisper,
-                "room": state.get("room", "inicio"),
+                "detected_language": detected_lang,
+                "room": state.get("room"),
             },
             ensure_ascii=False,
         )
     )
 
-    return CommandResponse(reply=final_reply, state=state)
+    return CommandResponse(reply=str(final_reply), state=state, detected_language=str(detected_lang)) # type: ignore
+
 
 
 @app.post("/api/save", response_model=SaveGameOut)
@@ -493,7 +566,7 @@ def save_game(body: SaveGameIn, request: Request, user: dict = Depends(get_curre
 
     conn = get_db_connection()
     try:
-        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur = conn.cursor()
         cur.execute(
             "INSERT INTO saves (id, user_id, state_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
             (save_id, user["id"], json.dumps(body.state, ensure_ascii=False), now, now),
@@ -515,7 +588,7 @@ def save_game(body: SaveGameIn, request: Request, user: dict = Depends(get_curre
         )
     )
 
-    return SaveGameOut(save_id=save_id)
+    return SaveGameOut(save_id=str(save_id)) # type: ignore
 
 
 @app.get("/api/save/{save_id}", response_model=LoadGameOut)
@@ -525,7 +598,7 @@ def load_game(save_id: str, request: Request, user: dict = Depends(get_current_u
     """
     conn = get_db_connection()
     try:
-        cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+        cur = conn.cursor()
         cur.execute("SELECT state_json, user_id FROM saves WHERE id = ?", (save_id,))
         row = cur.fetchone()
     finally:
@@ -553,5 +626,5 @@ def load_game(save_id: str, request: Request, user: dict = Depends(get_current_u
         )
     )
 
-    return LoadGameOut(state=state)
+    return LoadGameOut(state=dict(state)) # type: ignore
 
