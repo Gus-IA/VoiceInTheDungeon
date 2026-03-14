@@ -158,10 +158,26 @@ function appendLog(who: "tú" | "juego", text: string) {
   meta.append(time, icon);
   const body = document.createElement("span");
   body.className = "log-text";
-  body.textContent = text;
+  
   entry.append(meta, body);
   logDiv.appendChild(entry);
   logDiv.scrollTop = logDiv.scrollHeight;
+
+  if (isPlayer) {
+    body.textContent = text;
+  } else {
+    body.textContent = "";
+    let i = 0;
+    function typeChar() {
+      if (i < text.length) {
+        body.textContent += text.charAt(i);
+        i++;
+        if (logDiv) logDiv.scrollTop = logDiv.scrollHeight;
+        setTimeout(typeChar, 15);
+      }
+    }
+    typeChar();
+  }
 }
 
 function setStatus(text: string) {
