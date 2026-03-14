@@ -37,6 +37,8 @@ const usernameInput = document.getElementById("usernameInput") as HTMLInputEleme
 const passwordInput = document.getElementById("passwordInput") as HTMLInputElement | null;
 const authMsg = document.getElementById("authMsg") as HTMLDivElement | null;
 const modalTitle = document.getElementById("modalTitle") as HTMLHeadingElement | null;
+const journalContainer = document.getElementById("journal-container") as HTMLDivElement | null;
+const journalList = document.getElementById("journal-list") as HTMLUListElement | null;
 let isLoginMode = true;
 
 // Idioma del navegador como fallback
@@ -180,9 +182,26 @@ function appendLog(who: "tú" | "juego", text: string) {
   }
 }
 
-function setStatus(text: string) {
-  if (!statusDiv) return;
-  statusDiv.textContent = text;
+function setStatus(msg: string) {
+  if (statusDiv) statusDiv.textContent = msg;
+}
+
+function renderJournal() {
+  if (!journalContainer || !journalList || !state) return;
+  const journalEntries = state.journal || [];
+  
+  if (journalEntries.length === 0) {
+    journalContainer.style.display = "none";
+    return;
+  }
+  
+  journalContainer.style.display = "block";
+  journalList.innerHTML = "";
+  journalEntries.forEach(entry => {
+    const li = document.createElement("li");
+    li.textContent = entry;
+    journalList.appendChild(li);
+  });
 }
 
 interface SpeakOptions {
@@ -321,6 +340,7 @@ async function sendCommand(text: string) {
     if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
     const data = await res.json();
     state = data.state;
+    renderJournal();
     appendLog("juego", data.reply);
 
     // Cancelar cualquier audio anterior antes de empezar el nuevo bloque
@@ -394,6 +414,7 @@ if (loadBtn) {
         if (res.ok) {
           const data = await res.json();
           state = data.state;
+          renderJournal();
           appendLog("juego", "Cargada del servidor.");
           sendCommand("mirar");
           return;
@@ -403,6 +424,7 @@ if (loadBtn) {
     const loaded = loadGameState();
     if (loaded) {
       state = loaded;
+      renderJournal();
       appendLog("juego", "Cargada local.");
       sendCommand("mirar");
     } else {

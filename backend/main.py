@@ -309,6 +309,16 @@ def describe_room(state: dict) -> str:
     return base + extra
 
 
+def add_journal_entry(state: dict, entry: str) -> None:
+    """Añade una entrada al diario del estado si no existe ya."""
+    journal = state.get("journal", [])
+    if not isinstance(journal, list):
+        journal = []
+    if entry not in journal:
+        journal.append(entry)
+    state["journal"] = journal
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time()
@@ -344,6 +354,7 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
     state["flashlight_on"] = bool(state.get("flashlight_on", False))
     state["inventory"] = list(state.get("inventory", [])) # type: ignore
     state["game_won"] = bool(state.get("game_won", False)) # type: ignore
+    state["journal"] = list(state.get("journal", [])) # type: ignore
     target_lang = body.language
 
     logger.info(
@@ -416,6 +427,7 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
                 inventory.append("flashlight")
                 state["inventory"] = inventory
                 reply = "Coges la linterna. Te sientes un poco más seguro."
+                add_journal_entry(state, "Has encontrado una linterna para guiarte en la oscuridad.")
             else:
                 reply = "Ya tienes la linterna."
         else:
@@ -497,6 +509,10 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
             new_room_id = current_room["exits"][direction]
             state["room"] = new_room_id
             reply = describe_room(state)
+            
+            # Hitos por habitación
+            if new_room_id == "sala_guardia":
+                add_journal_entry(state, "Has descubierto una sala de guardia con muebles destrozados.")
         else:
             reply = "No parece haber ningún camino en esa dirección."
 
@@ -504,12 +520,14 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
         current_room_id = state.get("room", "inicio")
         if current_room_id == "inicio":
             state["room"] = "pasillo"
+            add_journal_entry(state, "Has logrado abrir la puerta de tu celda y salir al pasillo.")
             reply = (
                 "Abres la puerta con esfuerzo. Cruzas al pasillo.\n" + describe_room(state)
             )
         elif current_room_id == "sala_guardia":
             if state.get("flashlight_on"):
                 state["game_won"] = True
+                add_journal_entry(state, "¡Has escapado de la mazmorra con éxito!")
                 reply = (
                     "Forcejeas con el candado oxidado hasta que cede. El arcón se abre revelando "
                     "un mapa y un túnel secreto que conduce al exterior. ¡Has escapado del calabozo!"

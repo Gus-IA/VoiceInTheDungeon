@@ -2,6 +2,7 @@ export type GameState = {
   room: string;
   inventory: string[];
   flashlight_on?: boolean;
+  journal?: string[];
 };
 
 const SAVE_KEY = "voice-in-the-dungeon-save-1";

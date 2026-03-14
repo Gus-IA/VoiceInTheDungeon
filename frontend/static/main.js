@@ -42,6 +42,8 @@ const usernameInput = document.getElementById("usernameInput");
 const passwordInput = document.getElementById("passwordInput");
 const authMsg = document.getElementById("authMsg");
 const modalTitle = document.getElementById("modalTitle");
+const journalContainer = document.getElementById("journal-container");
+const journalList = document.getElementById("journal-list");
 let isLoginMode = true;
 // Idioma del navegador como fallback
 const browserLang = navigator.language.split("-")[0] || "es";
@@ -194,10 +196,25 @@ function appendLog(who, text) {
         typeChar();
     }
 }
-function setStatus(text) {
-    if (!statusDiv)
+function setStatus(msg) {
+    if (statusDiv)
+        statusDiv.textContent = msg;
+}
+function renderJournal() {
+    if (!journalContainer || !journalList || !state)
         return;
-    statusDiv.textContent = text;
+    const journalEntries = state.journal || [];
+    if (journalEntries.length === 0) {
+        journalContainer.style.display = "none";
+        return;
+    }
+    journalContainer.style.display = "block";
+    journalList.innerHTML = "";
+    journalEntries.forEach(entry => {
+        const li = document.createElement("li");
+        li.textContent = entry;
+        journalList.appendChild(li);
+    });
 }
 function speakText(text, options = {}) {
     var _a, _b;
@@ -330,6 +347,7 @@ function sendCommand(text) {
                 throw new Error(`Error HTTP: ${res.status}`);
             const data = yield res.json();
             state = data.state;
+            renderJournal();
             appendLog("juego", data.reply);
             // Cancelar cualquier audio anterior antes de empezar el nuevo bloque
             window.speechSynthesis.cancel();
@@ -401,6 +419,7 @@ if (loadBtn) {
                 if (res.ok) {
                     const data = yield res.json();
                     state = data.state;
+                    renderJournal();
                     appendLog("juego", "Cargada del servidor.");
                     sendCommand("mirar");
                     return;
@@ -413,6 +432,7 @@ if (loadBtn) {
         const loaded = loadGameState();
         if (loaded) {
             state = loaded;
+            renderJournal();
             appendLog("juego", "Cargada local.");
             sendCommand("mirar");
         }

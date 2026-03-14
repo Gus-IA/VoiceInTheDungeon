@@ -132,6 +132,47 @@
             width: 100%; margin-bottom: 1rem; padding: 0.75rem 1rem;
             border-radius: 0.75rem; border: 1px solid #334155; background: #0f172a; color: white;
         }
+
+        /* Adventure Journal Styles */
+        #journal-container {
+            margin-bottom: 1rem;
+            padding: 0.8rem 1rem;
+            border-radius: 0.75rem;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px dashed rgba(34, 197, 94, 0.3);
+            display: none; /* Se muestra cuando hay entradas */
+        }
+        #journal-container h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 0 0 0.5rem 0;
+            color: #4ade80;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        #journal-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            line-height: 1.4;
+        }
+        #journal-list li {
+            position: relative;
+            padding-left: 1.2rem;
+            margin-bottom: 0.3rem;
+        }
+        #journal-list li::before {
+            content: "◆";
+            position: absolute;
+            left: 0;
+            color: #22c55e;
+            font-size: 0.6rem;
+            top: 0.1rem;
+        }
     </style>
 </head>
 <body>
@@ -166,6 +207,11 @@
                 <div style="background:radial-gradient(circle, #064e3b, #020617); border-radius:0.5rem; height:80px; display:flex; align-items:center; justify-content:center; border:1px solid #065f46;">
                     <span style="font-size:2rem;">👁️</span>
                 </div>
+            </div>
+
+            <div id="journal-container">
+                <h3>📜 Registro de Aventura</h3>
+                <ul id="journal-list"></ul>
             </div>
 
             <div id="log" role="log"></div>
