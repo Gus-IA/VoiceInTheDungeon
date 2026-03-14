@@ -415,6 +415,43 @@ if (loadBtn) {
 let mediaRecorder: MediaRecorder | null = null;
 let audioChunks: Blob[] = [];
 
+// Visualizer Setup
+let audioCtx: AudioContext | null = null;
+let analyser: AnalyserNode | null = null;
+let audioSource: MediaStreamAudioSourceNode | null = null;
+let visualizerReqId: number = 0;
+const visualizerCanvas = document.getElementById("visualizer") as HTMLCanvasElement | null;
+let visualizerCtx: CanvasRenderingContext2D | null = null;
+if (visualizerCanvas) {
+  visualizerCtx = visualizerCanvas.getContext("2d");
+}
+
+function drawVisualizer() {
+  if (!analyser || !visualizerCtx || !visualizerCanvas) return;
+  
+  visualizerReqId = requestAnimationFrame(drawVisualizer);
+  
+  const bufferLength = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+  analyser.getByteFrequencyData(dataArray);
+
+  visualizerCtx.fillStyle = "#0f172a";
+  visualizerCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+
+  const barWidth = (visualizerCanvas.width / bufferLength) * 2.5;
+  let barHeight;
+  let x = 0;
+
+  for (let i = 0; i < bufferLength; i++) {
+    barHeight = dataArray[i] / 2;
+    const h = Math.max(2, barHeight / 2);
+    visualizerCtx.fillStyle = `rgb(34, ${barHeight + 100}, 94)`;
+    visualizerCtx.fillRect(x, visualizerCanvas.height - h, barWidth, h);
+    x += barWidth + 1;
+  }
+}
+
+
 async function setupWhisper() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     setStatus("Navegador no soporta audio.");
@@ -425,7 +462,19 @@ async function setupWhisper() {
   const start = async () => {
     if (recognizing) return;
     try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      analyser = audioCtx.createAnalyser();
+      audioSource = audioCtx.createMediaStreamSource(stream);
+      audioSource.connect(analyser);
+      analyser.fftSize = 256;
+
       mediaRecorder = new MediaRecorder(stream);
       audioChunks = [];
       mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
@@ -435,10 +484,20 @@ async function setupWhisper() {
             speakBtn.textContent = "Grabando...";
             speakBtn.classList.add("is-listening");
         }
+        if (visualizerCanvas) {
+            visualizerCanvas.style.display = "block";
+            drawVisualizer();
+        }
         setStatus("Escuchando... suelta para enviar");
       };
       mediaRecorder.onstop = async () => {
         recognizing = false;
+        if (visualizerReqId) cancelAnimationFrame(visualizerReqId);
+        if (visualizerCanvas) {
+          visualizerCanvas.style.display = "none";
+          visualizerCtx?.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+        }
+
         if (speakBtn) {
             speakBtn.textContent = "🎙️ Hablar";
             speakBtn.classList.remove("is-listening");

@@ -424,6 +424,36 @@ if (loadBtn) {
 // Whisper
 let mediaRecorder = null;
 let audioChunks = [];
+// Visualizer Setup
+let audioCtx = null;
+let analyser = null;
+let audioSource = null;
+let visualizerReqId = 0;
+const visualizerCanvas = document.getElementById("visualizer");
+let visualizerCtx = null;
+if (visualizerCanvas) {
+    visualizerCtx = visualizerCanvas.getContext("2d");
+}
+function drawVisualizer() {
+    if (!analyser || !visualizerCtx || !visualizerCanvas)
+        return;
+    visualizerReqId = requestAnimationFrame(drawVisualizer);
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteFrequencyData(dataArray);
+    visualizerCtx.fillStyle = "#0f172a";
+    visualizerCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+    const barWidth = (visualizerCanvas.width / bufferLength) * 2.5;
+    let barHeight;
+    let x = 0;
+    for (let i = 0; i < bufferLength; i++) {
+        barHeight = dataArray[i] / 2;
+        const h = Math.max(2, barHeight / 2);
+        visualizerCtx.fillStyle = `rgb(34, ${barHeight + 100}, 94)`;
+        visualizerCtx.fillRect(x, visualizerCanvas.height - h, barWidth, h);
+        x += barWidth + 1;
+    }
+}
 function setupWhisper() {
     return __awaiter(this, void 0, void 0, function* () {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -436,7 +466,17 @@ function setupWhisper() {
             if (recognizing)
                 return;
             try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === "suspended") {
+                    audioCtx.resume();
+                }
                 const stream = yield navigator.mediaDevices.getUserMedia({ audio: true });
+                analyser = audioCtx.createAnalyser();
+                audioSource = audioCtx.createMediaStreamSource(stream);
+                audioSource.connect(analyser);
+                analyser.fftSize = 256;
                 mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
                 mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
@@ -446,10 +486,20 @@ function setupWhisper() {
                         speakBtn.textContent = "Grabando...";
                         speakBtn.classList.add("is-listening");
                     }
+                    if (visualizerCanvas) {
+                        visualizerCanvas.style.display = "block";
+                        drawVisualizer();
+                    }
                     setStatus("Escuchando... suelta para enviar");
                 };
                 mediaRecorder.onstop = () => __awaiter(this, void 0, void 0, function* () {
                     recognizing = false;
+                    if (visualizerReqId)
+                        cancelAnimationFrame(visualizerReqId);
+                    if (visualizerCanvas) {
+                        visualizerCanvas.style.display = "none";
+                        visualizerCtx === null || visualizerCtx === void 0 ? void 0 : visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                    }
                     if (speakBtn) {
                         speakBtn.textContent = "🎙️ Hablar";
                         speakBtn.classList.remove("is-listening");
