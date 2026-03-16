@@ -177,14 +177,14 @@
 </head>
 <body>
     <div id="loginModal" style="display:none;">
-        <div class="modal-content">
+        <form id="authForm" class="modal-content">
             <h2 id="modalTitle" style="margin-top:0; margin-bottom:1.5rem; text-align:center;">Entrar al calabozo</h2>
-            <input type="text" id="usernameInput" placeholder="Nombre de usuario">
-            <input type="password" id="passwordInput" placeholder="Contraseña">
-            <button id="authBtn" style="width:100%;">Entrar</button>
-            <button id="toggleAuthMode" style="background:none; box-shadow:none; font-size:0.85rem; width:100%; text-decoration:underline; color:#94a3b8; margin-top:0.5rem;">¿No tienes cuenta? Regístrate</button>
+            <input type="text" id="usernameInput" placeholder="Nombre de usuario" required>
+            <input type="password" id="passwordInput" placeholder="Contraseña" required>
+            <button id="authBtn" type="submit" style="width:100%;">Entrar</button>
+            <button type="button" id="toggleAuthMode" style="background:none; box-shadow:none; font-size:0.85rem; width:100%; text-decoration:underline; color:#94a3b8; margin-top:0.5rem;">¿No tienes cuenta? Regístrate</button>
             <div id="authMsg" style="margin-top:1rem; text-align:center; color:#ef4444; font-size:0.85rem;"></div>
-        </div>
+        </form>
     </div>
 
     <div class="frame" id="gameUI" style="display:none;">

@@ -44,6 +44,7 @@ const authMsg = document.getElementById("authMsg");
 const modalTitle = document.getElementById("modalTitle");
 const journalContainer = document.getElementById("journal-container");
 const journalList = document.getElementById("journal-list");
+const authForm = document.getElementById("authForm");
 let isLoginMode = true;
 // Idioma del navegador como fallback
 const browserLang = navigator.language.split("-")[0] || "es";
@@ -81,8 +82,9 @@ if (toggleAuthMode) {
             toggleAuthMode.textContent = isLoginMode ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Entra";
     };
 }
-if (authBtn) {
-    authBtn.onclick = () => __awaiter(void 0, void 0, void 0, function* () {
+if (authForm) {
+    authForm.onsubmit = (e) => __awaiter(void 0, void 0, void 0, function* () {
+        e.preventDefault();
         const username = usernameInput === null || usernameInput === void 0 ? void 0 : usernameInput.value;
         const password = passwordInput === null || passwordInput === void 0 ? void 0 : passwordInput.value;
         if (!username || !password)

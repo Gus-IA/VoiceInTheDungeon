@@ -39,6 +39,7 @@ const authMsg = document.getElementById("authMsg") as HTMLDivElement | null;
 const modalTitle = document.getElementById("modalTitle") as HTMLHeadingElement | null;
 const journalContainer = document.getElementById("journal-container") as HTMLDivElement | null;
 const journalList = document.getElementById("journal-list") as HTMLUListElement | null;
+const authForm = document.getElementById("authForm") as HTMLFormElement | null;
 let isLoginMode = true;
 
 // Idioma del navegador como fallback
@@ -69,8 +70,9 @@ if (toggleAuthMode) {
   };
 }
 
-if (authBtn) {
-  authBtn.onclick = async () => {
+if (authForm) {
+  authForm.onsubmit = async (e) => {
+    e.preventDefault();
     const username = usernameInput?.value;
     const password = passwordInput?.value;
     if (!username || !password) return;
