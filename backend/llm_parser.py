@@ -106,12 +106,12 @@ ROOM CONTEXT (Provided in Spanish, but YOU MUST TRANSLATE if player speaks anoth
 - move, look, take, toggle_light, inventory, open_door, help, unknown.
 
 ### JSON Response Format:
-{
+{{
   "intent": "intent_name",
-  "slots": { "direction": "...", "item": "...", "action": "..." },
+  "slots": {{ "direction": "...", "item": "...", "action": "..." }},
   "reply": "Atmospheric text in the DETECTED language",
   "language_code": "ISO code"
-}
+}}
 """
 
 LANG_MAP = {

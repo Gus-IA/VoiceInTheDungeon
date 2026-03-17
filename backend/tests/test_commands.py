@@ -36,5 +36,5 @@ def test_moverse_norte_cambia_de_habitacion():
     resp = client.post("/api/command", json={"text": "ir norte", "state": state}, headers=headers)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["state"]["room"] == ROOMS["inicio"]["exits"]["norte"]
+    assert data["state"]["room"] == ROOMS["inicio"]["exits"]["north"]
 

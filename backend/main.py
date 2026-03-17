@@ -269,19 +269,19 @@ ROOMS = {
         "name": "Habitación oscura",
         "description": "Estás en una habitación pequeña y oscura. Hay una puerta al norte.",
         "description_dark": "Todo está demasiado oscuro para ver algo. Solo intuyes una puerta al norte.",
-        "exits": {"norte": "pasillo"},
+        "exits": {"north": "pasillo"},
     },
     "pasillo": {
         "name": "Pasillo de piedra",
         "description": "Te encuentras en un pasillo húmedo de piedra que se prolonga al este y al oeste.",
         "description_dark": "Notas un largo pasillo, pero apenas ves nada sin luz.",
-        "exits": {"sur": "inicio", "este": "sala_guardia"},
+        "exits": {"south": "inicio", "east": "sala_guardia"},
     },
     "sala_guardia": {
         "name": "Sala de guardia",
         "description": "Una vieja sala de guardia con mesas volcadas y un arcón cerrado.",
         "description_dark": "Tropiezas con muebles en la oscuridad; parece una habitación amplia.",
-        "exits": {"oeste": "pasillo"},
+        "exits": {"west": "pasillo"},
     },
 }
 
