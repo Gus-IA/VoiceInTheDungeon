@@ -3,6 +3,10 @@ export type GameState = {
   inventory: string[];
   flashlight_on?: boolean;
   journal?: string[];
+  // Minimap
+  x?: number;
+  y?: number;
+  visited_rooms?: Record<string, { x: number; y: number; name: string; exits?: Record<string, string> }>;
 };
 
 const SAVE_KEY = "voice-in-the-dungeon-save-1";

@@ -270,18 +270,21 @@ ROOMS = {
         "description": "Estás en una habitación pequeña y oscura. Hay una puerta al norte.",
         "description_dark": "Todo está demasiado oscuro para ver algo. Solo intuyes una puerta al norte.",
         "exits": {"north": "pasillo"},
+        "x": 0, "y": 0
     },
     "pasillo": {
         "name": "Pasillo de piedra",
         "description": "Te encuentras en un pasillo húmedo de piedra que se prolonga al este y al oeste.",
         "description_dark": "Notas un largo pasillo, pero apenas ves nada sin luz.",
         "exits": {"south": "inicio", "east": "sala_guardia"},
+        "x": 0, "y": 1
     },
     "sala_guardia": {
         "name": "Sala de guardia",
         "description": "Una vieja sala de guardia con mesas volcadas y un arcón cerrado.",
         "description_dark": "Tropiezas con muebles en la oscuridad; parece una habitación amplia.",
         "exits": {"west": "pasillo"},
+        "x": 1, "y": 1
     },
 }
 
@@ -508,6 +511,13 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
         if direction and direction in current_room["exits"]:
             new_room_id = current_room["exits"][direction]
             state["room"] = new_room_id
+            
+            # Actualizar coordenadas para el minimapa
+            new_room_data = ROOMS.get(new_room_id, {})
+            state["x"] = new_room_data.get("x", 0)
+            state["y"] = new_room_data.get("y", 0)
+            state["room_name"] = new_room_data.get("name", "Desconocido")
+            
             reply = describe_room(state)
             
             # Hitos por habitación
@@ -520,6 +530,12 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
         current_room_id = state.get("room", "inicio")
         if current_room_id == "inicio":
             state["room"] = "pasillo"
+            # Actualizar coordenadas para el minimapa
+            new_room_data = ROOMS.get("pasillo", {})
+            state["x"] = new_room_data.get("x", 0)
+            state["y"] = new_room_data.get("y", 0)
+            state["room_name"] = new_room_data.get("name", "Pasillo de piedra")
+            
             add_journal_entry(state, "Has logrado abrir la puerta de tu celda y salir al pasillo.")
             reply = (
                 "Abres la puerta con esfuerzo. Cruzas al pasillo.\n" + describe_room(state)
@@ -569,6 +585,10 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
             ensure_ascii=False,
         )
     )
+
+    # Incluir salidas actuales para el minimapa
+    current_room_id = state.get("room", "inicio")
+    state["room_exits"] = ROOMS.get(current_room_id, {}).get("exits", {})
 
     return CommandResponse(reply=str(final_reply), state=state, detected_language=str(detected_lang)) # type: ignore
 

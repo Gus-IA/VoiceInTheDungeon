@@ -1,12 +1,3 @@
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 import { saveGameState, loadGameState } from "./state.js";
 const logDiv = document.getElementById("log");
 const speakBtn = document.getElementById("speakBtn");
@@ -44,6 +35,7 @@ const authMsg = document.getElementById("authMsg");
 const modalTitle = document.getElementById("modalTitle");
 const journalContainer = document.getElementById("journal-container");
 const journalList = document.getElementById("journal-list");
+const minimapContainer = document.getElementById("minimap-container");
 const authForm = document.getElementById("authForm");
 let isLoginMode = true;
 // Idioma del navegador como fallback
@@ -83,7 +75,7 @@ if (toggleAuthMode) {
     };
 }
 if (authForm) {
-    authForm.onsubmit = (e) => __awaiter(void 0, void 0, void 0, function* () {
+    authForm.onsubmit = async (e) => {
         e.preventDefault();
         const username = usernameInput === null || usernameInput === void 0 ? void 0 : usernameInput.value;
         const password = passwordInput === null || passwordInput === void 0 ? void 0 : passwordInput.value;
@@ -96,24 +88,24 @@ if (authForm) {
                 const formData = new FormData();
                 formData.append("username", username);
                 formData.append("password", password);
-                const res = yield fetch("/api/login", { method: "POST", body: formData });
+                const res = await fetch("/api/login", { method: "POST", body: formData });
                 if (!res.ok) {
-                    const data = yield res.json();
+                    const data = await res.json();
                     throw new Error(data.detail || "Error al entrar");
                 }
-                const data = yield res.json();
+                const data = await res.json();
                 token = data.access_token;
                 localStorage.setItem("vitd-token", token);
                 updateAuthUI();
             }
             else {
-                const res = yield fetch("/api/register", {
+                const res = await fetch("/api/register", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ username, password }),
                 });
                 if (!res.ok) {
-                    const data = yield res.json();
+                    const data = await res.json();
                     throw new Error(data.detail || "Error al registrar");
                 }
                 if (authMsg) {
@@ -135,7 +127,7 @@ if (authForm) {
                 authMsg.style.color = "#ef4444";
             }
         }
-    });
+    };
 }
 if (logoutBtn) {
     logoutBtn.onclick = () => {
@@ -217,6 +209,56 @@ function renderJournal() {
         li.textContent = entry;
         journalList.appendChild(li);
     });
+}
+function updateMinimap() {
+    if (!minimapContainer || !state)
+        return;
+    if (!state.visited_rooms)
+        state.visited_rooms = {};
+    const GRID_SIZE = 9; // Grid de 9x9
+    const OFFSET = 4; // El (0,0) estará en la posición (4,4)
+    minimapContainer.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
+    minimapContainer.innerHTML = "";
+    // Dibujar grid fijo de 9x9
+    for (let y = OFFSET; y >= -OFFSET; y--) {
+        for (let x = -OFFSET; x <= OFFSET; x++) {
+            const cell = document.createElement("div");
+            cell.className = "map-cell";
+            // Buscar si hay una habitación visitada en estas coordenadas
+            const roomInCellId = Object.keys(state.visited_rooms).find(id => {
+                const r = state.visited_rooms[id];
+                return r.x === x && r.y === y;
+            });
+            if (roomInCellId) {
+                const r = state.visited_rooms[roomInCellId];
+                cell.classList.add("visited");
+                cell.title = r.name;
+                const initial = r.name.charAt(0).toUpperCase();
+                cell.textContent = initial;
+                if (r.exits) {
+                    if (r.exits.north)
+                        cell.classList.add("door-n");
+                    if (r.exits.south)
+                        cell.classList.add("door-s");
+                    if (r.exits.east)
+                        cell.classList.add("door-e");
+                    if (r.exits.west)
+                        cell.classList.add("door-w");
+                }
+                if (roomInCellId === state.room) {
+                    cell.classList.add("current");
+                    cell.textContent = "";
+                }
+            }
+            else {
+                // Celda vacía sin bordes ni fondo
+                cell.style.border = "none";
+                cell.style.background = "transparent";
+                cell.style.boxShadow = "none";
+            }
+            minimapContainer.appendChild(cell);
+        }
+    }
 }
 function speakText(text, options = {}) {
     var _a, _b;
@@ -321,64 +363,80 @@ function speakText(text, options = {}) {
         setTimeout(startSpeak, 1500); // Fail-safe
     }
 }
-function sendCommand(text) {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!token)
+async function sendCommand(text) {
+    if (!token)
+        return;
+    appendLog("tú", text);
+    try {
+        const res = await fetch("/api/command", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                text,
+                state,
+                language: "auto"
+            }),
+        });
+        if (res.status === 401) {
+            token = null;
+            localStorage.removeItem("vitd-token");
+            updateAuthUI();
             return;
-        appendLog("tú", text);
-        try {
-            const res = yield fetch("/api/command", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    text,
-                    state,
-                    language: "auto"
-                }),
-            });
-            if (res.status === 401) {
-                token = null;
-                localStorage.removeItem("vitd-token");
-                updateAuthUI();
-                return;
-            }
-            if (!res.ok)
-                throw new Error(`Error HTTP: ${res.status}`);
-            const data = yield res.json();
-            state = data.state;
-            renderJournal();
-            appendLog("juego", data.reply);
-            // Cancelar cualquier audio anterior antes de empezar el nuevo bloque
-            window.speechSynthesis.cancel();
-            // DETERMINAR IDIOMA PARA VOZ
-            const voiceLang = data.detected_language || browserLang || "es";
-            // Narrar respuesta
-            speakText(data.reply, {
-                lang: voiceLang
-            });
-            // Detección de Victoria (Visual)
-            if (state && state.game_won) {
-                appendLog("juego", "✨ ¡VICTORIA! ✨");
-            }
         }
-        catch (err) {
-            console.error(err);
-            appendLog("juego", "Hay un problema al hablar con el servidor.");
+        if (!res.ok)
+            throw new Error(`Error HTTP: ${res.status}`);
+        const data = await res.json();
+        state = data.state;
+        // Actualizar visited_rooms localmente
+        if (state) {
+            if (!state.visited_rooms)
+                state.visited_rooms = {};
+            const roomId = state.room;
+            if (!state.visited_rooms[roomId]) {
+                state.visited_rooms[roomId] = {
+                    x: state.x || 0,
+                    y: state.y || 0,
+                    name: state.room_name || roomId,
+                    exits: state.room_exits || {}
+                };
+            }
+            // Asegurar que actualizamos el mapa DESPUÉS de actualizar visited_rooms
+            updateMinimap();
+            // Auto-guardado local para persistencia del mapa
+            saveGameState(state);
         }
-    });
+        renderJournal();
+        appendLog("juego", data.reply);
+        // Cancelar cualquier audio anterior antes de empezar el nuevo bloque
+        window.speechSynthesis.cancel();
+        // DETERMINAR IDIOMA PARA VOZ
+        const voiceLang = data.detected_language || browserLang || "es";
+        // Narrar respuesta
+        speakText(data.reply, {
+            lang: voiceLang
+        });
+        // Detección de Victoria (Visual)
+        if (state && state.game_won) {
+            appendLog("juego", "✨ ¡VICTORIA! ✨");
+        }
+    }
+    catch (err) {
+        console.error(err);
+        appendLog("juego", "Hay un problema al hablar con el servidor.");
+    }
 }
 if (saveBtn) {
-    saveBtn.onclick = () => __awaiter(void 0, void 0, void 0, function* () {
+    saveBtn.onclick = async () => {
         if (!state) {
             setStatus("No hay partida que guardar todavía.");
             return;
         }
         const ok = saveGameState(state);
         try {
-            const res = yield fetch("/api/save", {
+            const res = await fetch("/api/save", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -394,7 +452,7 @@ if (saveBtn) {
             }
             if (!res.ok)
                 throw new Error(`Error HTTP al guardar: ${res.status}`);
-            const data = yield res.json();
+            const data = await res.json();
             window.localStorage.setItem(LAST_SAVE_ID_KEY, data.save_id);
             setStatus(`Partida guardada en el servidor. ID: ${data.save_id}`);
         }
@@ -402,14 +460,14 @@ if (saveBtn) {
             console.error(err);
             setStatus(ok ? "Guardado local OK, servidor falló." : "Error total al guardar.");
         }
-    });
+    };
 }
 if (loadBtn) {
-    loadBtn.onclick = () => __awaiter(void 0, void 0, void 0, function* () {
+    loadBtn.onclick = async () => {
         const lastSaveId = window.localStorage.getItem(LAST_SAVE_ID_KEY);
         if (lastSaveId) {
             try {
-                const res = yield fetch(`/api/save/${encodeURIComponent(lastSaveId)}`, {
+                const res = await fetch(`/api/save/${encodeURIComponent(lastSaveId)}`, {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
                 if (res.status === 401) {
@@ -419,9 +477,10 @@ if (loadBtn) {
                     return;
                 }
                 if (res.ok) {
-                    const data = yield res.json();
+                    const data = await res.json();
                     state = data.state;
                     renderJournal();
+                    updateMinimap();
                     appendLog("juego", "Cargada del servidor.");
                     sendCommand("mirar");
                     return;
@@ -435,13 +494,14 @@ if (loadBtn) {
         if (loaded) {
             state = loaded;
             renderJournal();
+            updateMinimap();
             appendLog("juego", "Cargada local.");
             sendCommand("mirar");
         }
         else {
             setStatus("No hay partidas guardadas.");
         }
-    });
+    };
 }
 // Whisper
 let mediaRecorder = null;
@@ -476,105 +536,110 @@ function drawVisualizer() {
         x += barWidth + 1;
     }
 }
-function setupWhisper() {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            setStatus("Navegador no soporta audio.");
-            if (speakBtn)
-                speakBtn.disabled = true;
+async function setupWhisper() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("Navegador no soporta audio.");
+        if (speakBtn)
+            speakBtn.disabled = true;
+        return;
+    }
+    const start = async () => {
+        if (recognizing)
             return;
-        }
-        const start = () => __awaiter(this, void 0, void 0, function* () {
-            if (recognizing)
-                return;
-            try {
-                if (!audioCtx) {
-                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === "suspended") {
+                audioCtx.resume();
+            }
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            analyser = audioCtx.createAnalyser();
+            audioSource = audioCtx.createMediaStreamSource(stream);
+            audioSource.connect(analyser);
+            analyser.fftSize = 256;
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+            mediaRecorder.onstart = () => {
+                recognizing = true;
+                if (speakBtn) {
+                    speakBtn.textContent = "Grabando...";
+                    speakBtn.classList.add("is-listening");
                 }
-                if (audioCtx.state === "suspended") {
-                    audioCtx.resume();
+                if (visualizerCanvas) {
+                    visualizerCanvas.style.display = "block";
+                    drawVisualizer();
                 }
-                const stream = yield navigator.mediaDevices.getUserMedia({ audio: true });
-                analyser = audioCtx.createAnalyser();
-                audioSource = audioCtx.createMediaStreamSource(stream);
-                audioSource.connect(analyser);
-                analyser.fftSize = 256;
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-                mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-                mediaRecorder.onstart = () => {
-                    recognizing = true;
-                    if (speakBtn) {
-                        speakBtn.textContent = "Grabando...";
-                        speakBtn.classList.add("is-listening");
+                setStatus("Escuchando... suelta para enviar");
+            };
+            mediaRecorder.onstop = async () => {
+                recognizing = false;
+                if (visualizerReqId)
+                    cancelAnimationFrame(visualizerReqId);
+                if (visualizerCanvas) {
+                    visualizerCanvas.style.display = "none";
+                    visualizerCtx === null || visualizerCtx === void 0 ? void 0 : visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                }
+                if (speakBtn) {
+                    speakBtn.textContent = "🎙️ Hablar";
+                    speakBtn.classList.remove("is-listening");
+                }
+                setStatus("Procesando voz...");
+                const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+                const formData = new FormData();
+                formData.append("file", audioBlob, "audio.webm");
+                try {
+                    const res = await fetch("/api/transcribe", {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${token}` },
+                        body: formData
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.text)
+                            sendCommand(data.text);
                     }
-                    if (visualizerCanvas) {
-                        visualizerCanvas.style.display = "block";
-                        drawVisualizer();
+                    else {
+                        setStatus("Error transcripción.");
                     }
-                    setStatus("Escuchando... suelta para enviar");
-                };
-                mediaRecorder.onstop = () => __awaiter(this, void 0, void 0, function* () {
-                    recognizing = false;
-                    if (visualizerReqId)
-                        cancelAnimationFrame(visualizerReqId);
-                    if (visualizerCanvas) {
-                        visualizerCanvas.style.display = "none";
-                        visualizerCtx === null || visualizerCtx === void 0 ? void 0 : visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
-                    }
-                    if (speakBtn) {
-                        speakBtn.textContent = "🎙️ Hablar";
-                        speakBtn.classList.remove("is-listening");
-                    }
-                    setStatus("Procesando voz...");
-                    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-                    const formData = new FormData();
-                    formData.append("file", audioBlob, "audio.webm");
-                    try {
-                        const res = yield fetch("/api/transcribe", {
-                            method: "POST",
-                            headers: { "Authorization": `Bearer ${token}` },
-                            body: formData
-                        });
-                        if (res.ok) {
-                            const data = yield res.json();
-                            if (data.text)
-                                sendCommand(data.text);
-                        }
-                        else {
-                            setStatus("Error transcripción.");
-                        }
-                    }
-                    catch (err) {
-                        setStatus("Error de conexión voz.");
-                    }
-                    finally {
-                        setStatus("");
-                    }
-                });
-                mediaRecorder.start();
-            }
-            catch (err) {
-                setStatus("Error micrófono.");
-            }
-        });
-        const stop = () => {
-            if (recognizing && mediaRecorder && mediaRecorder.state !== "inactive") {
-                mediaRecorder.stop();
-            }
-        };
-        if (speakBtn) {
-            // Soporte para PC (Mouse)
-            speakBtn.addEventListener("mousedown", (e) => { e.preventDefault(); start(); });
-            speakBtn.addEventListener("mouseup", stop);
-            speakBtn.addEventListener("mouseleave", stop);
-            // Soporte para Móvil (Touch)
-            speakBtn.addEventListener("touchstart", (e) => { e.preventDefault(); start(); });
-            speakBtn.addEventListener("touchend", stop);
+                }
+                catch (err) {
+                    setStatus("Error de conexión voz.");
+                }
+                finally {
+                    setStatus("");
+                }
+            };
+            mediaRecorder.start();
         }
-    });
+        catch (err) {
+            setStatus("Error micrófono.");
+        }
+    };
+    const stop = () => {
+        if (recognizing && mediaRecorder && mediaRecorder.state !== "inactive") {
+            mediaRecorder.stop();
+        }
+    };
+    if (speakBtn) {
+        // Soporte para PC (Mouse)
+        speakBtn.addEventListener("mousedown", (e) => { e.preventDefault(); start(); });
+        speakBtn.addEventListener("mouseup", stop);
+        speakBtn.addEventListener("mouseleave", stop);
+        // Soporte para Móvil (Touch)
+        speakBtn.addEventListener("touchstart", (e) => { e.preventDefault(); start(); });
+        speakBtn.addEventListener("touchend", stop);
+    }
 }
 setupWhisper();
+// Intentar cargar estado inicial para mostrar el mapa al arrancar
+const initialState = loadGameState();
+if (initialState) {
+    state = initialState;
+    updateMinimap();
+    renderJournal();
+}
 if (sendBtn && textInput) {
     const sendText = () => {
         const val = textInput.value.trim();

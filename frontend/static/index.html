@@ -173,6 +173,82 @@
             font-size: 0.6rem;
             top: 0.1rem;
         }
+
+        /* Minimap & Journal Layout */
+        .status-panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        @media (max-width: 600px) {
+            .status-panels {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        #minimap-wrapper {
+            position: relative;
+            padding: 1.5rem;
+            background: #020617;
+            border-radius: 0.9rem;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            box-shadow: inset 0 0 15px rgba(59, 130, 246, 0.1);
+        }
+        .direction-label {
+            position: absolute;
+            font-size: 0.7rem;
+            color: #3b82f6;
+            font-weight: bold;
+            opacity: 0.7;
+        }
+        .label-n { top: 0.3rem; left: 50%; transform: translateX(-50%); }
+        .label-s { bottom: 0.3rem; left: 50%; transform: translateX(-50%); }
+        .label-e { right: 0.3rem; top: 50%; transform: translateY(-50%); }
+        .label-w { left: 0.3rem; top: 50%; transform: translateY(-50%); }
+
+        #minimap-container {
+            display: grid;
+            gap: 5px;
+            justify-items: center;
+            align-items: center;
+            min-height: 100px;
+        }
+        .map-cell {
+            width: 35px;
+            height: 35px;
+            border-radius: 4px;
+            border: 1px solid #1e293b;
+            background: rgba(30, 41, 59, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: rgba(255, 255, 255, 0.7);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .map-cell.visited {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+        }
+        .map-cell.current {
+            background: #3b82f6;
+            border-color: #60a5fa;
+            box-shadow: 0 0 15px #3b82f6;
+            z-index: 2;
+        }
+        .map-cell.current::after {
+            content: "🧙";
+            font-size: 1rem;
+        }
+        /* Room connections */
+        .map-cell.door-n { border-top-color: rgba(59, 130, 246, 0.8) !important; border-top-width: 2px; }
+        .map-cell.door-s { border-bottom-color: rgba(59, 130, 246, 0.8) !important; border-bottom-width: 2px; }
+        .map-cell.door-e { border-right-color: rgba(59, 130, 246, 0.8) !important; border-right-width: 2px; }
+        .map-cell.door-w { border-left-color: rgba(59, 130, 246, 0.8) !important; border-left-width: 2px; }
     </style>
 </head>
 <body>
@@ -209,9 +285,21 @@
                 </div>
             </div>
 
-            <div id="journal-container">
-                <h3>📜 Registro de Aventura</h3>
-                <ul id="journal-list"></ul>
+            <div class="status-panels">
+                <div id="minimap-wrapper">
+                    <span class="direction-label label-n">N</span>
+                    <span class="direction-label label-s">S</span>
+                    <span class="direction-label label-e">E</span>
+                    <span class="direction-label label-w">W</span>
+                    <div id="minimap-container">
+                        <!-- Se poblará dinámicamente -->
+                    </div>
+                </div>
+
+                <div id="journal-container" style="display:none;">
+                    <h3 style="font-size: 0.8rem; margin: 0 0 0.5rem 0; color: #3b82f6; text-transform: uppercase; letter-spacing: 0.05rem;">📜 Registro</h3>
+                    <ul id="journal-list" style="margin: 0; padding-left: 1.2rem; font-size: 0.75rem; color: #94a3b8; list-style-type: '✧ ';"></ul>
+                </div>
             </div>
 
             <div id="log" role="log"></div>

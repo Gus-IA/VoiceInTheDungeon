@@ -39,6 +39,7 @@ const authMsg = document.getElementById("authMsg") as HTMLDivElement | null;
 const modalTitle = document.getElementById("modalTitle") as HTMLHeadingElement | null;
 const journalContainer = document.getElementById("journal-container") as HTMLDivElement | null;
 const journalList = document.getElementById("journal-list") as HTMLUListElement | null;
+const minimapContainer = document.getElementById("minimap-container") as HTMLDivElement | null;
 const authForm = document.getElementById("authForm") as HTMLFormElement | null;
 let isLoginMode = true;
 
@@ -206,6 +207,59 @@ function renderJournal() {
   });
 }
 
+function updateMinimap() {
+  if (!minimapContainer || !state) return;
+  if (!state.visited_rooms) state.visited_rooms = {};
+
+  const GRID_SIZE = 9; // Grid de 9x9
+  const OFFSET = 4;    // El (0,0) estará en la posición (4,4)
+  
+  minimapContainer.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
+  minimapContainer.innerHTML = "";
+
+  // Dibujar grid fijo de 9x9
+  for (let y = OFFSET; y >= -OFFSET; y--) {
+    for (let x = -OFFSET; x <= OFFSET; x++) {
+      const cell = document.createElement("div");
+      cell.className = "map-cell";
+      
+      // Buscar si hay una habitación visitada en estas coordenadas
+      const roomInCellId = Object.keys(state.visited_rooms).find(id => {
+        const r = state!.visited_rooms![id];
+        return r.x === x && r.y === y;
+      });
+      
+      if (roomInCellId) {
+        const r = state.visited_rooms[roomInCellId];
+        cell.classList.add("visited");
+        cell.title = r.name;
+        
+        const initial = r.name.charAt(0).toUpperCase();
+        cell.textContent = initial;
+
+        if (r.exits) {
+          if (r.exits.north) cell.classList.add("door-n");
+          if (r.exits.south) cell.classList.add("door-s");
+          if (r.exits.east) cell.classList.add("door-e");
+          if (r.exits.west) cell.classList.add("door-w");
+        }
+
+        if (roomInCellId === state.room) {
+          cell.classList.add("current");
+          cell.textContent = ""; 
+        }
+      } else {
+        // Celda vacía sin bordes ni fondo
+        cell.style.border = "none";
+        cell.style.background = "transparent";
+        cell.style.boxShadow = "none";
+      }
+      
+      minimapContainer.appendChild(cell);
+    }
+  }
+}
+
 interface SpeakOptions {
   pitch?: number;
   rate?: number;
@@ -342,6 +396,26 @@ async function sendCommand(text: string) {
     if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
     const data = await res.json();
     state = data.state;
+    
+    // Actualizar visited_rooms localmente
+    if (state) {
+      if (!state.visited_rooms) state.visited_rooms = {};
+      const roomId = state.room;
+      if (!state.visited_rooms[roomId]) {
+        state.visited_rooms[roomId] = {
+          x: state.x || 0,
+          y: state.y || 0,
+          name: (state as any).room_name || roomId,
+          exits: (state as any).room_exits || {}
+        };
+      }
+      // Asegurar que actualizamos el mapa DESPUÉS de actualizar visited_rooms
+      updateMinimap();
+      
+      // Auto-guardado local para persistencia del mapa
+      saveGameState(state);
+    }
+    
     renderJournal();
     appendLog("juego", data.reply);
 
@@ -417,6 +491,7 @@ if (loadBtn) {
           const data = await res.json();
           state = data.state;
           renderJournal();
+          updateMinimap();
           appendLog("juego", "Cargada del servidor.");
           sendCommand("mirar");
           return;
@@ -427,6 +502,7 @@ if (loadBtn) {
     if (loaded) {
       state = loaded;
       renderJournal();
+      updateMinimap();
       appendLog("juego", "Cargada local.");
       sendCommand("mirar");
     } else {
@@ -566,6 +642,14 @@ async function setupWhisper() {
 }
 
 setupWhisper();
+
+// Intentar cargar estado inicial para mostrar el mapa al arrancar
+const initialState = loadGameState();
+if (initialState) {
+  state = initialState;
+  updateMinimap();
+  renderJournal();
+}
 
 if (sendBtn && textInput) {
   const sendText = () => {
