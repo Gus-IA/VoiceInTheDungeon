@@ -5,10 +5,10 @@ import logging
 import os
 from time import time
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import sqlite3
-from typing import Optional
+from typing import Any, cast
 
 # Asegurar que el directorio 'backend' esté en el path para los imports
 sys.path.append(str(Path(__file__).parent))
@@ -144,12 +144,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 class CommandRequest(BaseModel):
     text: str
     state: dict | None = None
-    language: str = "es"
+    language: str = "auto"
 
 
 class CommandResponse(BaseModel):
     reply: str
-    state: dict
+    state: dict[str, Any]
     detected_language: str = "es"
 
 
@@ -181,7 +181,7 @@ def register(user: UserCreate):
         
         user_id = str(uuid4())
         hashed_pw = auth.get_password_hash(user.password)
-        now = datetime.utcnow().isoformat() + "Z"
+        now = datetime.now(timezone.utc).isoformat() + "Z"
         
         conn.execute(
             "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
@@ -264,32 +264,88 @@ def root() -> HTMLResponse:
     return HTMLResponse(index_path.read_text(encoding="utf-8"))
 
 
-ROOMS = {
-    "inicio": {
-        "name": "Habitación oscura",
-        "description": "Estás en una habitación pequeña y oscura. Hay una puerta al norte.",
-        "description_dark": "Todo está demasiado oscuro para ver algo. Solo intuyes una puerta al norte.",
-        "exits": {"north": "pasillo"},
-        "x": 0, "y": 0
-    },
-    "pasillo": {
-        "name": "Pasillo de piedra",
-        "description": "Te encuentras en un pasillo húmedo de piedra que se prolonga al este y al oeste.",
-        "description_dark": "Notas un largo pasillo, pero apenas ves nada sin luz.",
-        "exits": {"south": "inicio", "east": "sala_guardia"},
-        "x": 0, "y": 1
-    },
-    "sala_guardia": {
-        "name": "Sala de guardia",
-        "description": "Una vieja sala de guardia con mesas volcadas y un arcón cerrado.",
-        "description_dark": "Tropiezas con muebles en la oscuridad; parece una habitación amplia.",
-        "exits": {"west": "pasillo"},
-        "x": 1, "y": 1
-    },
-}
+def get_initial_rooms():
+    import random
+    # Direcciones disponibles desdel el pasillo (excepto sur que es inicio)
+    dirs = ["north", "east", "west"]
+    random.shuffle(dirs)
+    
+    # Asignar salas fijas a direcciones aleatorias
+    exits_pasillo = {
+        "south": "inicio",
+        dirs[0]: "armeria",
+        dirs[1]: "biblioteca",
+        dirs[2]: "sala_guardia"
+    }
+
+    return {
+        "inicio": {
+            "name": "Habitación oscura",
+            "description": "Estás en una habitación pequeña y oscura. Hay una puerta al norte.",
+            "description_dark": "Todo está demasiado oscuro para ver algo. Solo intuyes una puerta al norte.",
+            "exits": {"north": "pasillo"},
+            "x": 0, "y": 0
+        },
+        "pasillo": {
+            "name": "Pasillo de piedra",
+            "description": "Te encuentras en un pasillo húmedo de piedra que se prolonga en varias direcciones.",
+            "description_dark": "Notas un largo pasillo, pero apenas ves nada sin luz.",
+            "exits": exits_pasillo,
+            "x": 0, "y": 1
+        },
+        "armeria": {
+            "name": "Armería",
+            "description": "Una armería con estantes vacíos y el olor a metal oxidado.",
+            "description_dark": "Sientes el frío de las paredes y el eco de un espacio grande.",
+            "x": 0, "y": 2 if dirs[0] == "north" else 1, # Ajustar coord según dirección
+            "exits": {llm_parser.DIRECTIONS_OPPOSITE.get(dirs[0], "south"): "pasillo", "north": "EMPTY", "east": "EMPTY", "west": "EMPTY"}
+        },
+        "biblioteca": {
+            "name": "Biblioteca",
+            "description": "Una biblioteca en ruinas, con libros esparcidos por el suelo y estanterías caídas.",
+            "description_dark": "El aire es denso y huele a papel viejo y moho.",
+            "x": -1 if dirs[1] == "west" else 1 if dirs[1] == "east" else 0,
+            "y": 1 if dirs[1] != "north" else 2,
+            "exits": {llm_parser.DIRECTIONS_OPPOSITE.get(dirs[1], "south"): "pasillo", "north": "EMPTY", "west": "EMPTY", "south": "EMPTY"}
+        },
+        "sala_guardia": {
+            "name": "Sala de guardia",
+            "description": "Una vieja sala de guardia con mesas volcadas y un arcón cerrado.",
+            "description_dark": "Tropiezas con muebles en la oscuridad; parece una habitación amplia.",
+            "x": 1 if dirs[2] == "east" else -1 if dirs[2] == "west" else 0,
+            "y": 1 if dirs[2] != "north" else 2,
+            "exits": {llm_parser.DIRECTIONS_OPPOSITE.get(dirs[2], "south"): "pasillo", "north": "EMPTY", "east": "EMPTY", "south": "EMPTY"},
+            "victory_claimed": False
+        },
+    }
+
+ROOMS = get_initial_rooms()
+
+# Ruta para persistencia de salas procedimentales
+ROOMS_FILE = os.path.join(DATA_DIR, "rooms.json")
+
+def load_rooms():
+    global ROOMS
+    if os.path.exists(ROOMS_FILE):
+        try:
+            with open(ROOMS_FILE, "r", encoding="utf-8") as f:
+                ROOMS.update(json.load(f))
+            logger.info(f"Salas cargadas desde {ROOMS_FILE}")
+        except Exception as e:
+            logger.error(f"Error cargando salas: {e}")
+
+def save_rooms():
+    try:
+        with open(ROOMS_FILE, "w", encoding="utf-8") as f:
+            json.dump(ROOMS, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error guardando salas: {e}")
+
+# Cargar salas al inicio
+load_rooms()
 
 
-def describe_room(state: dict) -> str:
+def describe_room(state: dict, language: str = "es") -> str:
     room_id = str(state.get("room", "inicio"))
     room = ROOMS.get(room_id, ROOMS["inicio"])
     flashlight_on = bool(state.get("flashlight_on", False))
@@ -302,10 +358,11 @@ def describe_room(state: dict) -> str:
         inventory = []
 
     if room_id == "inicio" and "flashlight" not in inventory:
-        extra = " En el suelo distingues la silueta de una linterna."
+        extra = "\nHay una linterna en el suelo." if flashlight_on else ""
+        
     if room_id == "sala_guardia" and flashlight_on:
-        if state.get("game_won"):
-            extra += " El arcón está abierto. Has encontrado el tesoro y la salida."
+        if state.get("victory_claimed"):
+            extra += " El arcón está abierto. Hay un túnel secreto aquí."
         else:
             extra += " Ves un arcón de madera con un candado oxidado."
 
@@ -340,7 +397,7 @@ async def log_requests(request: Request, call_next):
         "method": request.method,
         "path": request.url.path,
         "status_code": response.status_code,
-        "duration_ms": round(float(duration_ms), 2),
+        "duration_ms": round(float(duration_ms), 2), # type: ignore
         "request_id": request_id,
         "client_hash": client_hash,
         "user_agent": request.headers.get("user-agent", ""),
@@ -352,32 +409,28 @@ async def log_requests(request: Request, call_next):
 @app.post("/api/command", response_model=CommandResponse)
 def process_command(body: CommandRequest, request: Request, user: dict = Depends(get_current_user)):
     text = body.text.strip()
+    global ROOMS
     raw_state = body.state or {"room": "inicio", "inventory": []}
-    state: dict[str, Any] = dict(raw_state)
+    state = cast(Any, dict(raw_state))
     state["flashlight_on"] = bool(state.get("flashlight_on", False))
-    state["inventory"] = list(state.get("inventory", [])) # type: ignore
-    state["game_won"] = bool(state.get("game_won", False)) # type: ignore
-    state["journal"] = list(state.get("journal", [])) # type: ignore
+    state["inventory"] = list(state.get("inventory", []))
+    state["game_won"] = bool(state.get("game_won", False))
+    state["journal"] = list(state.get("journal", []))
     target_lang = body.language
 
-    logger.info(
-        json.dumps(
-            {
-                "event": "command_received",
-                "text": text,
-                "user_id": user["id"],
-                "language": target_lang,
-                "room": state.get("room", "inicio"),
-            },
-            ensure_ascii=False,
-        )
-    )
-
-    # 1. Intentar parsear con LLM unificado (Incluye traducción y ambiente si el LLM lo genera)
-    # Si el idioma no es español, forzamos a que el LLM traduzca la descripción
-    # pasando la descripción base como prompt si el intent es 'mirar'
-    room_desc = describe_room(state)
-    llm_result = llm_parser.parse_command_llm(text, target_lang, room_desc)
+    # 1. Resolución de Idioma (Prioridad: Detección -> Estado -> Target -> Default)
+    session_lang = state.get("language")
+    new_detected = llm_parser.detect_language(text)
+    
+    # Lo que dice el LLM también cuenta (pero a veces falla)
+    llm_lang = None # Inicializar aquí para que esté disponible antes del parse_command_llm
+    
+    # 1. Intentar parsear con LLM unificado
+    # Le pasamos el idioma detectado por keywords si existe, si no "auto" para que el LLM detecte sin sesgos.
+    llm_provisional_lang = new_detected or "auto"
+    
+    room_desc = describe_room(state, language=session_lang or "es") 
+    llm_result = llm_parser.parse_command_llm(text, llm_provisional_lang, room_desc)
     
     # 1.1 Fallback local si el LLM falla o no está configurado
     if not llm_result:
@@ -389,26 +442,54 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
     llm_reply = llm_result.get("reply") if llm_result else None
     ambient_whisper = llm_result.get("ambient_whisper") if llm_result else None
 
-    # --- NUEVA SECCIÓN: Resolución de Idioma antes de la Lógica ---
-    detected_lang = llm_result.get("language_code") if llm_result else None
+    # Ahora que tenemos llm_result, podemos obtener llm_lang
+    llm_lang = llm_result.get("language_code") if llm_result else None
     
-    # Normalización: 'eng' -> 'en', 'french' -> 'fr', etc.
-    if detected_lang:
-        detected_lang = str(detected_lang).lower().strip()
-        if len(detected_lang) > 2:
-            for code, name in llm_parser.LANG_MAP.items():
-                if name.lower() in detected_lang:
-                    detected_lang = code
-                    break
-            detected_lang = detected_lang[:2]
+    def normalize_lang(l):
+        if not l or l in ["au", "no", "un"]: return None
+        l = str(l).lower().strip()
+        if l in llm_parser.LANGUAGE_ALIASES:
+            return llm_parser.LANGUAGE_ALIASES[l]
+        for code, name in llm_parser.LANG_MAP.items():
+            if name.lower() in l:
+                return code
+        return l[:2]
 
-    # Fallback final si no hay detección
-    if not detected_lang or detected_lang in ["au", "no"]: 
-        detected_lang = target_lang if target_lang != "auto" else "es"
-    
-    if len(detected_lang) != 2:
+    llm_lang = normalize_lang(llm_lang)
+    target_lang = normalize_lang(target_lang)
+
+    # Decidir el idioma final
+    # 1. Si detectamos algo CLARO con keywords, es lo más fiable para el usuario
+    if new_detected:
+        detected_lang = new_detected
+    # 2. Si el LLM detectó algo claro, lo usamos como segunda opción
+    elif llm_lang and llm_lang not in ["au", "no", "un"]:
+        detected_lang = llm_lang
+    # 3. Si no, mantenemos el de la sesión
+    elif session_lang:
+        detected_lang = session_lang
+    # 4. Si es la primera vez, miramos el 'target' del request
+    elif target_lang and target_lang != "auto":
+        detected_lang = target_lang
+    # 5. Fallback final
+    else:
         detected_lang = "es"
-    # --- FIN Resolución Idioma ---
+
+    # Persistir en el estado
+    state["language"] = detected_lang
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "command_received",
+                "text": text,
+                "user_id": user["id"],
+                "language": detected_lang,
+                "room": state.get("room", "inicio"),
+            },
+            ensure_ascii=False,
+        )
+    )
 
     reply = None
 
@@ -417,7 +498,7 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
         reply = llm_parser.HELP_MESSAGES.get(detected_lang, llm_parser.HELP_MESSAGES["es"])
 
     elif intent == "look" or "mirar" in text.lower():
-        reply = describe_room(state)
+        reply = describe_room(state, language=detected_lang)
 
     elif intent == "take" or "coger" in text.lower():
         # Asegurar que slots no sea None y que el valor no sea None
@@ -429,12 +510,16 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
             if "flashlight" not in inventory:
                 inventory.append("flashlight")
                 state["inventory"] = inventory
-                reply = "Coges la linterna. Te sientes un poco más seguro."
-                add_journal_entry(state, "Has encontrado una linterna para guiarte en la oscuridad.")
+                reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["pickup_flashlight"]
+                
+                msg = "Has encontrado una linterna para guiarte en la oscuridad."
+                if detected_lang != "es":
+                    msg = llm_parser.translate_reply(msg, detected_lang)
+                add_journal_entry(state, msg)
             else:
-                reply = "Ya tienes la linterna."
+                reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["already_have_flashlight"]
         else:
-            reply = "¿Qué quieres coger?"
+            reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["what_to_take"]
 
     elif intent == "toggle_light" or "linterna" in text.lower():
         # Asegurar que slots no sea None y que el valor no sea None
@@ -442,7 +527,7 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
         has_flashlight = "flashlight" in state.get("inventory", [])
         
         if not has_flashlight:
-            reply = "No tienes ninguna linterna."
+            reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["no_flashlight"]
         else:
             # Detectar si quiere encender o apagar si el LLM no fue claro
             is_on = "encender" in text.lower() or "prender" in text.lower() or action == "on"
@@ -450,20 +535,21 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
             
             if is_on:
                 if state.get("flashlight_on"):
-                    reply = "La linterna ya está encendida."
+                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_already_on"]
                 else:
                     state["flashlight_on"] = True
-                    reply = "Enciendes la linterna. La oscuridad retrocede a tu alrededor."
+                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_on"]
             elif is_off:
                 if state.get("flashlight_on"):
                     state["flashlight_on"] = False
-                    reply = "Apagas la linterna. La oscuridad vuelve a envolverte."
+                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_off"]
                 else:
-                    reply = "La linterna ya está apagada."
-            else:
-                # Toggle
+                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_already_off"]
                 state["flashlight_on"] = not state.get("flashlight_on")
-                reply = "Encendida" if state["flashlight_on"] else "Apagada"
+                if state["flashlight_on"]:
+                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_on"]
+                else:
+                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_off"]
 
     elif intent == "inventory" or "inventario" in text.lower() or "inventaire" in text.lower() or "inventar" in text.lower():
         inventory = state.get("inventory", [])
@@ -476,19 +562,10 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
                 else:
                     items_localized.append(item)
             
-            if detected_lang == "es":
-                reply = "Llevas: " + ", ".join(items_localized)
-            elif detected_lang == "de":
-                reply = "Du trägst: " + ", ".join(items_localized)
-            elif detected_lang == "fr":
-                reply = "Tu portes : " + ", ".join(items_localized)
-            else:
-                reply = "You are carrying: " + ", ".join(items_localized)
+            prefix = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["inventory_prefix"]
+            reply = prefix + ", ".join(items_localized)
         else:
-            if detected_lang == "es":
-                reply = "No llevas nada."
-            else:
-                reply = "You are carrying nothing."
+            reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["inventory_empty"]
 
     elif intent == "move" or any(d in text.lower() for d in ["norte", "sur", "este", "oeste", "north", "south", "east", "west"]):
         current_room_id = state.get("room", "inicio")
@@ -508,8 +585,51 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
                     direction = eng_dir
                     break
 
-        if direction and direction in current_room["exits"]:
-            new_room_id = current_room["exits"][direction]
+        if direction and direction in cast(dict[str, Any], current_room).get("exits", {}):
+            new_room_id = cast(dict[str, Any], current_room)["exits"][direction]
+            
+            # PROCEDURAL GENERATION: Si la salida es EMPTY, generamos la sala con el LLM
+            if new_room_id == "EMPTY":
+                curr_x = current_room.get("x", 0)
+                curr_y = current_room.get("y", 0)
+                
+                # Calcular nuevas coordenadas
+                new_x, new_y = curr_x, curr_y
+                if direction == "north": new_y += 1
+                elif direction == "south": new_y -= 1
+                elif direction == "east": new_x += 1
+                elif direction == "west": new_x -= 1
+                
+                new_room_id = f"proc_{new_x}_{new_y}"
+                
+                # Si la sala ya existe (por otra conexión), la usamos
+                if new_room_id in ROOMS:
+                    current_room["exits"][direction] = new_room_id
+                else:
+                    # Generar nueva sala con el LLM
+                    logger.info(f"Generando sala procedimental en ({new_x}, {new_y}) via {direction}")
+                    new_room_data = llm_parser.generate_procedural_room(
+                        current_room_desc=describe_room(state, language=detected_lang),
+                        direction=direction,
+                        language=detected_lang
+                    )
+                    if new_room_data:
+                        new_room_data["x"] = new_x
+                        new_room_data["y"] = new_y
+                        ROOMS[new_room_id] = new_room_data
+                        current_room["exits"][direction] = new_room_id
+                        save_rooms() # Persistir cambios
+                    else:
+                        # Fallback extremo si falla el LLM de generación
+                        ROOMS[new_room_id] = {
+                            "name": "Cámara Oscura",
+                            "description": "Una sala genérica de piedra fría. El LLM está cansado.",
+                            "x": new_x, "y": new_y,
+                            "exits": {"south" if direction == "north" else "north" if direction == "south" else "west" if direction == "east" else "east": current_room_id}
+                        }
+                        current_room["exits"][direction] = new_room_id
+                        save_rooms() # Persistir cambios
+
             state["room"] = new_room_id
             
             # Actualizar coordenadas para el minimapa
@@ -518,13 +638,16 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
             state["y"] = new_room_data.get("y", 0)
             state["room_name"] = new_room_data.get("name", "Desconocido")
             
-            reply = describe_room(state)
+            reply = describe_room(state, language=detected_lang)
             
             # Hitos por habitación
             if new_room_id == "sala_guardia":
-                add_journal_entry(state, "Has descubierto una sala de guardia con muebles destrozados.")
+                msg = "Has descubierto una sala de guardia con muebles destrozados."
+                if detected_lang != "es":
+                    msg = llm_parser.translate_reply(msg, detected_lang)
+                add_journal_entry(state, msg)
         else:
-            reply = "No parece haber ningún camino en esa dirección."
+            reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["no_path"]
 
     elif intent == "open_door" or "abrir puerta" in text.lower() or "abrir arcon" in text.lower() or "abrir arcón" in text.lower():
         current_room_id = state.get("room", "inicio")
@@ -536,38 +659,72 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
             state["y"] = new_room_data.get("y", 0)
             state["room_name"] = new_room_data.get("name", "Pasillo de piedra")
             
-            add_journal_entry(state, "Has logrado abrir la puerta de tu celda y salir al pasillo.")
-            reply = (
-                "Abres la puerta con esfuerzo. Cruzas al pasillo.\n" + describe_room(state)
-            )
+            msg = "Has logrado abrir la puerta de tu celda y salir al pasillo."
+            if detected_lang != "es":
+                msg = llm_parser.translate_reply(msg, detected_lang)
+            add_journal_entry(state, msg)
+            
+            door_msg = "Abres la puerta con esfuerzo. Cruzas al pasillo."
+            if detected_lang != "es":
+                door_msg = llm_parser.translate_reply(door_msg, detected_lang)
+                
+            reply = door_msg + "\n" + describe_room(state, language=detected_lang)
+        elif text.lower() in ["reset", "reiniciar", "limpiar"]:
+            # Borrar mundo procedural
+            if os.path.exists(ROOMS_FILE):
+                try:
+                    os.remove(ROOMS_FILE)
+                    logger.info("Archivo rooms.json eliminado en reset.")
+                except Exception as e:
+                    logger.error(f"Error eliminando rooms.json: {e}")
+            
+            ROOMS = get_initial_rooms()
+            
+            state = {"room": "inicio", "inventory": [], "journal": [], "language": detected_lang}
+            msg = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["reset_world"]
+            add_journal_entry(state, msg)
+            reply = msg
+            return CommandResponse(reply=reply, state=state, detected_language=detected_lang or "es")
+
         elif current_room_id == "sala_guardia":
             if state.get("flashlight_on"):
-                state["game_won"] = True
-                add_journal_entry(state, "¡Has escapado de la mazmorra con éxito!")
-                reply = (
-                    "Forcejeas con el candado oxidado hasta que cede. El arcón se abre revelando "
-                    "un mapa y un túnel secreto que conduce al exterior. ¡Has escapado del calabozo!"
-                )
+                if not state.get("victory_claimed"):
+                    state["victory_claimed"] = True
+                    add_journal_entry(state, "¡Has encontrado la salida secreta!")
+                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["victory"]
+                else:
+                    reply = describe_room(state, language=detected_lang)
             else:
-                reply = "Está demasiado oscuro para intentar abrir nada. Podrías hacerte daño."
+                reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["too_dark"]
         else:
-            reply = "No ves nada que puedas abrir aquí."
+            reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["nothing_to_open"]
 
     # 4. Respuesta final: Priorizamos 'reply' (lógica de juego) si existe.
     if reply:
-        # Si ya es un HELP_MESSAGE o INVENTORY, no hace falta re-traducir (evita alucinaciones)
-        already_localized = reply in llm_parser.HELP_MESSAGES.values() or reply.startswith("Llevas:") or reply.startswith("You are carrying:") or reply.startswith("Du trägst:")
+        # Solo omitimos la traducción si el mensaje ya está en el idioma correcto
+        already_localized = False
+        
+        # Comprobar en MESSAGES del idioma actual
+        current_lang_msgs = llm_parser.MESSAGES.get(detected_lang, {})
+        if reply in current_lang_msgs.values():
+            already_localized = True
+            
+        # Comprobar en HELP_MESSAGES del idioma actual
+        if not already_localized:
+            current_help = llm_parser.HELP_MESSAGES.get(detected_lang)
+            if reply == current_help:
+                already_localized = True
         
         if already_localized:
             final_reply = reply
         else:
+            # Si el mensaje vino de un fallback en español o es dinámico, lo traducimos
             final_reply = llm_parser.translate_reply(reply, detected_lang)
     elif llm_reply and intent != "unknown":
         final_reply = llm_reply
     else:
-        # Si nada funcionó, fallback genérito
-        fallback = "No entiendo lo que intentas hacer. Di 'ayuda' para ver opciones."
-        final_reply = llm_parser.translate_reply(fallback, detected_lang)
+        # Fallback genérico
+        final_reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["fallback"]
 
     # Limpiar reply
     final_reply = str(final_reply).strip()

@@ -18,11 +18,21 @@ if (window.speechSynthesis.onvoiceschanged !== undefined) {
 preloadVoices();
 const saveBtn = document.getElementById("saveBtn");
 const loadBtn = document.getElementById("loadBtn");
+const resetBtn = document.getElementById("resetBtn");
 let state = null;
 let recognizing = false;
-let token = localStorage.getItem("vitd-token");
 const LAST_SAVE_ID_KEY = "voice-in-the-dungeon-last-save-id";
-// UI Elements
+const SAVE_1_KEY = "voice-in-the-dungeon-save-1";
+
+window.resetGame = function() {
+    console.log("Global reset triggered");
+    if (confirm("¿Reiniciar partida? Se borrará todo el progreso.")) {
+        localStorage.removeItem(LAST_SAVE_ID_KEY);
+        localStorage.removeItem(SAVE_1_KEY);
+        localStorage.removeItem("vitd-token"); // Opcional: desloguear para limpieza total
+        window.location.reload();
+    }
+};
 const loginModal = document.getElementById("loginModal");
 const gameUI = document.getElementById("gameUI");
 const authStatus = document.getElementById("authStatus");
@@ -418,10 +428,7 @@ async function sendCommand(text) {
         speakText(data.reply, {
             lang: voiceLang
         });
-        // Detección de Victoria (Visual)
-        if (state && state.game_won) {
-            appendLog("juego", "✨ ¡VICTORIA! ✨");
-        }
+        // La victoria ahora se maneja por narrativa desde el backend
     }
     catch (err) {
         console.error(err);
@@ -461,6 +468,11 @@ if (saveBtn) {
             setStatus(ok ? "Guardado local OK, servidor falló." : "Error total al guardar.");
         }
     };
+}
+if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+        window.resetGame();
+    });
 }
 if (loadBtn) {
     loadBtn.onclick = async () => {

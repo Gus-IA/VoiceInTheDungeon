@@ -19,12 +19,21 @@ if (window.speechSynthesis.onvoiceschanged !== undefined) {
 preloadVoices();
 const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement | null;
 const loadBtn = document.getElementById("loadBtn") as HTMLButtonElement | null;
+const resetBtn = document.getElementById("resetBtn") as HTMLButtonElement | null;
 
 let state: GameState | null = null;
 let recognizing = false;
 let token: string | null = localStorage.getItem("vitd-token");
 
 const LAST_SAVE_ID_KEY = "voice-in-the-dungeon-last-save-id";
+const SAVE_1_KEY = "voice-in-the-dungeon-save-1";
+
+(window as any).resetGame = function() {
+  if (confirm("¿Reiniciar partida actual? Se borrará el progreso no guardado, pero mantendrás tus grabaciones en el servidor.")) {
+    localStorage.removeItem(SAVE_1_KEY); // Borrar auto-guardado local
+    window.location.reload();
+  }
+};
 
 // UI Elements
 const loginModal = document.getElementById("loginModal") as HTMLDivElement | null;
@@ -371,7 +380,7 @@ function speakText(text: string, options: { pitch?: number, rate?: number, lang?
   }
 }
 
-async function sendCommand(text: string) {
+async function sendCommand(text: string, forceLanguage?: string) {
   if (!token) return;
   appendLog("tú", text);
   try {
@@ -383,8 +392,8 @@ async function sendCommand(text: string) {
       },
       body: JSON.stringify({ 
         text, 
-        state, 
-        language: "auto" 
+        state,
+        language: forceLanguage || "auto"
       }),
     });
     if (res.status === 401) {
@@ -430,10 +439,7 @@ async function sendCommand(text: string) {
       lang: voiceLang
     });
 
-    // Detección de Victoria (Visual)
-    if (state && (state as any).game_won) {
-      appendLog("juego", "✨ ¡VICTORIA! ✨");
-    }
+    // La victoria ahora se maneja por narrativa desde el backend
   } catch (err) {
     console.error(err);
     appendLog("juego", "Hay un problema al hablar con el servidor.");
@@ -471,6 +477,12 @@ if (saveBtn) {
       setStatus(ok ? "Guardado local OK, servidor falló." : "Error total al guardar.");
     }
   };
+}
+
+if (resetBtn) {
+  resetBtn.addEventListener("click", () => {
+    (window as any).resetGame();
+  });
 }
 
 if (loadBtn) {
@@ -614,7 +626,9 @@ async function setupWhisper() {
           });
           if (res.ok) {
             const data = await res.json();
-            if (data.text) sendCommand(data.text);
+          if (data.text) {
+            sendCommand(data.text, data.language);
+          }
           } else { setStatus("Error transcripción."); }
         } catch (err) { setStatus("Error de conexión voz."); }
         finally { setStatus(""); }

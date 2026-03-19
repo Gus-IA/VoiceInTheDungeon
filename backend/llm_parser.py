@@ -11,10 +11,15 @@ KEYWORDS = {
         "encender": "toggle_light", "apagar": "toggle_light", "ayuda": "help", "abrir": "open_door",
     },
     "en": {
-        "look": "look",
-        "north": "move", "south": "move", "east": "move", "west": "move",
-        "inventory": "inventory", "take": "take", "flashlight": "toggle_light",
-        "on": "toggle_light", "off": "toggle_light", "help": "help", "open": "open_door",
+        "look": "look", "see": "look", "around": "look", "examine": "look", "room": "look",
+        "north": "move", "south": "move", "east": "move", "west": "move", "go": "move", "walk": "move",
+        "inventory": "inventory", "items": "inventory", "carrying": "inventory", "bag": "inventory",
+        "take": "take", "grab": "take", "pick": "take", "get": "take", 
+        "flashlight": "toggle_light", "light": "toggle_light", "lamp": "toggle_light",
+        "on": "toggle_light", "off": "toggle_light", "turn": "toggle_light", "switch": "toggle_light",
+        "help": "help", "options": "help", "commands": "help", "what": "help",
+        "open": "open_door", "door": "open_door", "chest": "open_door", "unlock": "open_door",
+        "hello": "en", "hi": "en", "hey": "en", "thanks": "en", "thank": "en"
     },
     "ja": {
         "見る": "look", "みる": "look",
@@ -23,10 +28,13 @@ KEYWORDS = {
         "つける": "toggle_light", "消す": "toggle_light", "ヘルプ": "help", "開ける": "open_door",
     },
     "fr": {
-        "regarder": "look", "voir": "look",
-        "nord": "move", "sud": "move", "est": "move", "ouest": "move",
-        "inventaire": "inventory", "prendre": "take", "lampe": "toggle_light",
-        "allumer": "toggle_light", "eteindre": "toggle_light", "aide": "help", "ouvrir": "open_door",
+        "regarder": "look", "voir": "look", "autour": "look", "examine": "look",
+        "nord": "move", "sud": "move", "est": "move", "ouest": "move", "aller": "move", "marcher": "move",
+        "inventaire": "inventory", "objets": "inventory", "sac": "inventory",
+        "prendre": "take", "saisir": "take", "ramasser": "take",
+        "lampe": "toggle_light", "lumiere": "toggle_light", "torche": "toggle_light",
+        "allume": "toggle_light", "eteint": "toggle_light", "ouvrir": "open_door", "porte": "open_door",
+        "bonjour": "fr", "merci": "fr"
     },
     "de": {
         "schauen": "look", "sehen": "look",
@@ -58,6 +66,79 @@ HELP_MESSAGES = {
     "ja": "次のようなことができます： '見る', 'ライトを取る', '持ち物', 'ライトをつける', 'ライトを消す', '北/南/東/西に行く', 'ドアを開ける'。"
 }
 
+MESSAGES = {
+    "es": {
+        "pickup_flashlight": "Has recogido la linterna.",
+        "already_have_flashlight": "Ya tienes la linterna.",
+        "what_to_take": "¿Qué quieres coger?",
+        "no_flashlight": "No tienes ninguna linterna.",
+        "light_already_on": "La linterna ya está encendida.",
+        "light_on": "Enciendes la linterna. La oscuridad retrocede a tu alrededor.",
+        "light_off": "Apagas la linterna. La oscuridad vuelve a envolverte.",
+        "light_already_off": "La linterna ya está apagada.",
+        "inventory_prefix": "Llevas: ",
+        "inventory_empty": "No llevas nada.",
+        "no_path": "No parece haber ningún camino en esa dirección.",
+        "reset_world": "La mazmorra se ha reestructurado por completo. Regresas al inicio en un nuevo mundo.",
+        "victory": "¡Has encontrado la salida secreta! Eres libre... o puedes quedarte a explorar.",
+        "too_dark": "Está demasiado oscuro para intentar abrir nada.",
+        "nothing_to_open": "No ves nada que puedas abrir aquí.",
+        "fallback": "No entiendo lo que intentas hacer. Di 'ayuda' para ver opciones."
+    },
+    "en": {
+        "pickup_flashlight": "You have picked up the flashlight.",
+        "already_have_flashlight": "You already have the flashlight.",
+        "what_to_take": "What do you want to take?",
+        "no_flashlight": "You don't have a flashlight.",
+        "light_already_on": "The flashlight is already on.",
+        "light_on": "You turn on the flashlight. The darkness recedes around you.",
+        "light_off": "You turn off the flashlight. Darkness envelops you once more.",
+        "light_already_off": "The flashlight is already off.",
+        "inventory_prefix": "You are carrying: ",
+        "inventory_empty": "You are carrying nothing.",
+        "no_path": "There doesn't seem to be any path in that direction.",
+        "reset_world": "The dungeon has been completely restructured. You return to the beginning in a new world.",
+        "victory": "You've found the secret exit! You are free... or you can stay and explore.",
+        "too_dark": "It's too dark to try to open anything.",
+        "nothing_to_open": "You don't see anything you can open here.",
+        "fallback": "I don't understand what you're trying to do. Say 'help' for options."
+    }
+}
+
+def detect_language(text: str) -> str:
+    """
+    Detecta el idioma del texto basándose en palabras clave comunes.
+    """
+    text_lower = text.lower()
+    # Palabras clave de alta confianza por idioma
+    checks = {
+        # Español primero para evitar falsos positivos en idiomas similares
+        "es": ["mirar", "coger", "linterna", "inventario", "ayuda", "norte", "sur", "este", "oeste", "abrir", "puerta", "hola", "gracias"],
+        "en": ["the", "is", "get", "take", "look", "inventory", "north", "south", "east", "west", "open", "door", "use", "flashlight", "hello", "around", "room", "examine"],
+        "de": ["der", "die", "das", "ist", "norden", "suden", "osten", "westen", "inventar", "hilfe", "schauen", "sehen"],
+        "fr": ["le", "la", "les", "nord", "sud", "est", "ouest", "inventaire", "regarder", "voir", "ouvrir"],
+        "it": ["il", "la", "i", "gli", "le", "sud", "ovest", "guarda", "vedere"],
+        "pt": ["os", "as", "leste", "olhar", "ver", "pegar"],
+        "ja": ["見る", "行く", "北", "南", "東", "西", "アイテム", "助けて", "こんにちは"],
+        "ru": ["смотреть", "идти", "север", "юг", "восток", "запад", "инвентарь", "привет"],
+        "zh": ["看", "去", "北", "南", "东", "西", "物品", "帮助", "你好"],
+        "nl": ["de", "het", "een", "noord", "zuid", "oost", "west", "kijk", "hallo"]
+    }
+    
+    for lang, keywords in checks.items():
+        if any(kw in text_lower for kw in keywords):
+            # Para idiomas sin espacios (ja, zh), no usamos los espacios laterales
+            if lang in ["ja", "zh"]:
+                return lang
+            # Para los demás, verificamos palabra completa si es corta
+            if any(f" {kw} " in f" {text_lower} " for kw in keywords if len(kw) > 2):
+                return lang
+            elif any(kw == text_lower for kw in keywords):
+                return lang
+            
+    return None # Regresar None si no hay nada claro
+
+
 DIRECTIONS = {
     "norte": "north", "sur": "south", "este": "east", "oeste": "west",
     "north": "north", "south": "south", "east": "east", "west": "west",
@@ -65,6 +146,17 @@ DIRECTIONS = {
     "norden": "north", "suden": "south", "osten": "east", "westen": "west",
     "leste": "east", "sul": "south", "北": "north", "南": "south", "東": "east", "西": "west"
 }
+
+DIRECTIONS_OPPOSITE = {
+    "north": "south", "south": "north",
+    "east": "west", "west": "east"
+}
+
+DUNGEON_THEMES = [
+    "Cripta olvidada", "Laboratorio de alquimia en ruinas", "Túneles inundados", 
+    "Prisión de almas", "Jardín subterráneo marchito", "Armería herrumbrada",
+    "Cámara de tortura abandonada", "Mina de cristales oscuros", "Sagrario profanado"
+]
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -94,6 +186,7 @@ ROOM CONTEXT (Provided in Spanish, but YOU MUST TRANSLATE if player speaks anoth
 - You are a UNIVERSAL language engine. 
 - You MUST detect the player's language from their input and translate the ROOM CONTEXT accordingly.
 - **NEVER reply in Spanish if the player speaks French, Japanese, German, etc.**
+- **If the player's language differs from the TARGET LANGUAGE, priority goes to matching the player exactly.**
 - The 'reply' and the 'language_code' MUST match the detected language perfectly.
 - Ensure the tone is consistent across all languages.
 
@@ -122,9 +215,101 @@ LANG_MAP = {
     "de": "Alemán/German",
     "it": "Italiano/Italian",
     "pt": "Portugués/Portuguese",
+    "ja": "Japonés/Japanese",
+    "zh": "Chino/Chinese",
+    "ru": "Ruso/Russian",
+    "nl": "Holandés/Dutch",
     "auto": "Automatic Detection (Detect and match the player's language)"
 }
 
+LANGUAGE_ALIASES = {
+    "spanish": "es", "esp": "es", "es-es": "es",
+    "english": "en", "eng": "en", "en-us": "en", "en-gb": "en",
+    "french": "fr", "fra": "fr", "fr-fr": "fr",
+    "german": "de", "deu": "de", "ger": "de", "de-de": "de",
+    "japanese": "ja", "jpn": "ja", "jp": "ja", "ja-jp": "ja",
+    "chinese": "zh", "zho": "zh", "chi": "zh", "zh-cn": "zh", "zh-tw": "zh",
+    "russian": "ru", "rus": "ru", "ru-ru": "ru",
+    "italian": "it", "ita": "it", "it-it": "it",
+    "portuguese": "pt", "por": "pt", "pt-pt": "pt", "pt-br": "pt",
+    "dutch": "nl", "nld": "nl", "dut": "nl", "nl-nl": "nl"
+}
+
+SYSTEM_PROMPT_ROOM_GEN = """
+Eres el Maestro de Mazmorras de un juego de aventuras procedural.
+El jugador se está moviendo hacia el {direction} desde esta habitación:
+"{current_room_desc}"
+
+Genera una nueva habitación atmosférica que conecte con la anterior.
+Mantén el tono oscuro, misterioso y ligeramente claustrofóbico de 'Voice in the Dungeon'.
+
+FORMATO DE RESPUESTA (SOLO JSON):
+{{
+  "name": "Nombre de la Sala",
+  "description": "Descripción atmosférica (2-3 frases)",
+  "exits": {{ "{back_direction}": "PREVIOUS_ROOM_ID", "random_exit_1": "EMPTY", ... }}
+}}
+
+TEMA DE LA SALA: {theme}
+
+IMPORTANTE:
+1. El campo 'exits' DEBE incluir una salida que vuelva a la habitación anterior ({back_direction}).
+2. Otras salidas deben marcarse como "EMPTY" para que el sistema las genere después.
+3. No incluyas explicaciones, SOLO el objeto JSON.
+4. IDIOMA DE SALIDA: {language}
+5. Usa el TEMA DE LA SALA indicado para inspirar el nombre y la descripción.
+"""
+
+def generate_procedural_room(current_room_desc: str, direction: str, language: str = "es") -> Optional[Dict[str, Any]]:
+    """
+    Usa el LLM para generar una nueva habitación basada en la dirección y el contexto.
+    """
+    client = get_client()
+    if not client:
+        return None
+
+    # Mapeo de direcciones opuestas para la salida de vuelta
+    opposite = {
+        "north": "south", "south": "north",
+        "east": "west", "west": "east"
+    }
+    back_direction = opposite.get(direction, "inicio")
+    
+    full_lang = LANG_MAP.get(language, language)
+    
+    import random
+    theme = random.choice(DUNGEON_THEMES)
+    
+    try:
+        prompt = SYSTEM_PROMPT_ROOM_GEN.format(
+            direction=direction,
+            current_room_desc=current_room_desc,
+            back_direction=back_direction,
+            language=full_lang,
+            theme=theme
+        )
+        
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": prompt}
+            ],
+            temperature=0.7,
+            response_format={"type": "json_object"},
+            timeout=7.0
+        )
+        
+        content = completion.choices[0].message.content
+        res = json.loads(content)
+        
+        # Validar estructura básica
+        if "name" not in res or "description" not in res:
+            return None
+            
+        return res
+    except Exception as e:
+        logger.error(f"Error generando habitación procedimental: {e}")
+        return None
 def parse_command_llm(text: str, language: str = "es", room_desc: str = "") -> Optional[Dict[str, Any]]:
     client = get_client()
     if not client:
