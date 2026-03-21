@@ -13,7 +13,7 @@ from typing import Any, cast
 # Asegurar que el directorio 'backend' esté en el path para los imports
 sys.path.append(str(Path(__file__).parent))
 
-from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File
+from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -406,8 +406,50 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+def prefetch_rooms(state: dict, language: str):
+    """
+    Genera habitaciones adyacentes marcadas como EMPTY en segundo plano.
+    """
+    current_room_id = state.get("room", "inicio")
+    current_room = ROOMS.get(current_room_id)
+    if not current_room:
+        return
+
+    exits = current_room.get("exits", {})
+    changed = False
+    for direction, target in exits.items():
+        if target == "EMPTY":
+            curr_x = current_room.get("x", 0)
+            curr_y = current_room.get("y", 0)
+            new_x, new_y = curr_x, curr_y
+            if direction == "north": new_y += 1
+            elif direction == "south": new_y -= 1
+            elif direction == "east": new_x += 1
+            elif direction == "west": new_x -= 1
+            
+            new_room_id = f"proc_{new_x}_{new_y}"
+            if new_room_id not in ROOMS:
+                logger.info(f"Prefetch: Generando {new_room_id} en {direction}")
+                new_room_data = llm_parser.generate_procedural_room(
+                    current_room_desc=current_room.get("description", ""),
+                    direction=direction,
+                    language=language
+                )
+                if not new_room_data:
+                    new_room_data = llm_parser.local_generate_room(direction, language=language)
+                
+                new_room_data["x"] = new_x
+                new_room_data["y"] = new_y
+                ROOMS[new_room_id] = new_room_data
+            
+            current_room["exits"][direction] = new_room_id
+            changed = True
+            
+    if changed:
+        save_rooms()
+
 @app.post("/api/command", response_model=CommandResponse)
-def process_command(body: CommandRequest, request: Request, user: dict = Depends(get_current_user)):
+def process_command(body: CommandRequest, request: Request, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     text = body.text.strip()
     global ROOMS
     raw_state = body.state or {"room": "inicio", "inventory": []}
@@ -606,13 +648,15 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
                 if new_room_id in ROOMS:
                     current_room["exits"][direction] = new_room_id
                 else:
-                    # Generar nueva sala con el LLM
-                    logger.info(f"Generando sala procedimental en ({new_x}, {new_y}) via {direction}")
                     new_room_data = llm_parser.generate_procedural_room(
                         current_room_desc=describe_room(state, language=detected_lang),
                         direction=direction,
                         language=detected_lang
                     )
+                    
+                    if not new_room_data:
+                        logger.warning("Fallo en LLM procedimental, usando fallback local.")
+                        new_room_data = llm_parser.local_generate_room(direction, language=detected_lang)
                     if new_room_data:
                         new_room_data["x"] = new_x
                         new_room_data["y"] = new_y
@@ -746,6 +790,9 @@ def process_command(body: CommandRequest, request: Request, user: dict = Depends
     # Incluir salidas actuales para el minimapa
     current_room_id = state.get("room", "inicio")
     state["room_exits"] = ROOMS.get(current_room_id, {}).get("exits", {})
+
+    # Disparar pre-fetching de salas adyacentes en segundo plano
+    background_tasks.add_task(prefetch_rooms, state, detected_lang)
 
     return CommandResponse(reply=str(final_reply), state=state, detected_language=str(detected_lang)) # type: ignore
 

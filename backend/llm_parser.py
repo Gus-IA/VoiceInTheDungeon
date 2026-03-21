@@ -1,7 +1,13 @@
-from typing import Dict, Any, Optional
 import os
 import json
 import logging
+import re
+from typing import Optional, Dict, Any, List
+from functools import lru_cache
+from groq import Groq
+from dotenv import load_dotenv
+
+load_dotenv()
 
 KEYWORDS = {
     "es": {
@@ -157,10 +163,6 @@ DUNGEON_THEMES = [
     "Prisión de almas", "Jardín subterráneo marchito", "Armería herrumbrada",
     "Cámara de tortura abandonada", "Mina de cristales oscuros", "Sagrario profanado"
 ]
-from groq import Groq
-from dotenv import load_dotenv
-
-load_dotenv()
 
 logger = logging.getLogger("voice_in_the_dungeon.llm")
 
@@ -350,6 +352,7 @@ def parse_command_llm(text: str, language: str = "es", room_desc: str = "") -> O
         logger.error(f"Error llamando a Groq LLM: {e}")
         return None
 
+@lru_cache(maxsize=128)
 def translate_reply(text: str, target_language: str) -> str:
     """
     Traduce un bloque de texto al idioma objetivo usando el LLM.
@@ -467,3 +470,35 @@ def local_parse_command(text: str, language: str = "es") -> Optional[Dict[str, A
         "reply": None,
         "language_code": local_lang
     }
+def local_generate_room(direction: str, current_room_desc: str = "", language: str = "es") -> Dict[str, Any]:
+    """
+    Generador de habitaciones basado en plantillas para cuando el LLM falla.
+    """
+    import random
+    
+    themes = [
+        {"name": "Pasillo de Antorchas", "desc": "Un pasillo largo iluminado por antorchas que chisporrotean en las paredes de piedra húmeda."},
+        {"name": "Cámara de Almacenamiento", "desc": "Una habitación pequeña llena de cajas rotas y estantes carcomidos por el tiempo."},
+        {"name": "Cripta Pequeña", "desc": "Un lugar silencioso con hornacinas excavadas en la pared. El olor a polvo es sofocante."},
+        {"name": "Intersección de Túneles", "desc": "Varios caminos se cruzan aquí. El techo es bajo y gotea un agua de color oscuro."},
+        {"name": "Sala de Guardia Abandonada", "desc": "Hay una mesa volcada y una silla rota. Restos de una antigua vigilancia que ya no existe."},
+        {"name": "Gruta Natural", "desc": "Las paredes de piedra han dejado paso a formaciones naturales. Se oye un murmullo de agua lejana."},
+        {"name": "Vestíbulo en Ruinas", "desc": "Grandes pilares de mármol sostienen a duras penas un techo que amenaza con desplomarse."},
+        {"name": "Laboratorio de Alquimia", "desc": "Frascos de vidrio rotos cubren el suelo. Hay un extraño residuo fluorescente en un mortero."},
+        {"name": "Dormitorios Comunes", "desc": "Varios catres podridos se alinean contra las paredes. Un silencio sepulcral lo domina todo."}
+    ]
+    
+    selected = random.choice(themes)
+    res = {
+        "name": selected["name"],
+        "description": selected["desc"],
+        "exits": {}, # Se rellenará en main.py
+        "objects": []
+    }
+    
+    # Traducir si es necesario
+    if language != "es":
+        res["name"] = translate_reply(res["name"], language)
+        res["description"] = translate_reply(res["description"], language)
+        
+    return res
