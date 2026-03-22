@@ -181,6 +181,9 @@ Your task is to parse player input into JSON and provide an atmospheric response
 
 TARGET LANGUAGE: {language}
 
+PLAYER HISTORY (Concise summary of past key actions):
+{history}
+
 ROOM CONTEXT (Provided in Spanish, but YOU MUST TRANSLATE if player speaks another language):
 {room_desc}
 
@@ -312,7 +315,7 @@ def generate_procedural_room(current_room_desc: str, direction: str, language: s
     except Exception as e:
         logger.error(f"Error generando habitación procedimental: {e}")
         return None
-def parse_command_llm(text: str, language: str = "es", room_desc: str = "") -> Optional[Dict[str, Any]]:
+def parse_command_llm(text: str, language: str = "es", room_desc: str = "", history: str = "") -> Optional[Dict[str, Any]]:
     client = get_client()
     if not client:
         logger.warning("GROQ_API_KEY no configurada o inválida. Saltando LLM.")
@@ -320,7 +323,10 @@ def parse_command_llm(text: str, language: str = "es", room_desc: str = "") -> O
     
     try:
         full_lang = LANG_MAP.get(language, language)
-        current_prompt = SYSTEM_PROMPT.format(language=full_lang, room_desc=room_desc)
+        # Escapamos las llaves en los datos dinámicos para evitar errores de .format()
+        safe_room_desc = room_desc.replace("{", "{{").replace("}", "}}")
+        safe_history = history.replace("{", "{{").replace("}", "}}")
+        current_prompt = SYSTEM_PROMPT.format(language=full_lang, room_desc=safe_room_desc, history=safe_history)
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
@@ -492,6 +498,7 @@ def local_generate_room(direction: str, current_room_desc: str = "", language: s
     res = {
         "name": selected["name"],
         "description": selected["desc"],
+        "description_dark": "La oscuridad es casi total. Apenas distingues las formas de lo que parece ser " + selected["name"].lower() + ".",
         "exits": {}, # Se rellenará en main.py
         "objects": []
     }

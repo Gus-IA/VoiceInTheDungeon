@@ -334,6 +334,17 @@ def load_rooms():
         except Exception as e:
             logger.error(f"Error cargando salas: {e}")
 
+
+def get_history_context(journal: list) -> str:
+    """Obtiene un resumen conciso del historial para el prompt."""
+    if not journal:
+        return "Inicio de la aventura."
+    if len(journal) > 10:
+        first = journal[:3]
+        last = journal[-7:]
+        return " | ".join(first) + " [...] " + " | ".join(last)
+    return " | ".join(journal)
+
 def save_rooms():
     try:
         with open(ROOMS_FILE, "w", encoding="utf-8") as f:
@@ -350,7 +361,10 @@ def describe_room(state: dict, language: str = "es") -> str:
     room = ROOMS.get(room_id, ROOMS["inicio"])
     flashlight_on = bool(state.get("flashlight_on", False))
 
-    base = str(room["description"]) if flashlight_on else str(room["description_dark"])
+    if flashlight_on:
+        base = str(room.get("description", "Una sala sin descripción."))
+    else:
+        base = str(room.get("description_dark", "Está demasiado oscuro para ver nada."))
 
     extra = ""
     inventory = state.get("inventory", [])
@@ -370,11 +384,11 @@ def describe_room(state: dict, language: str = "es") -> str:
 
 
 def add_journal_entry(state: dict, entry: str) -> None:
-    """Añade una entrada al diario del estado si no existe ya."""
+    """Añade una entrada al diario del estado si no es idéntica a la última."""
     journal = state.get("journal", [])
     if not isinstance(journal, list):
         journal = []
-    if entry not in journal:
+    if not journal or journal[-1] != entry:
         journal.append(entry)
     state["journal"] = journal
 
@@ -455,9 +469,15 @@ def process_command(body: CommandRequest, request: Request, background_tasks: Ba
     raw_state = body.state or {"room": "inicio", "inventory": []}
     state = cast(Any, dict(raw_state))
     state["flashlight_on"] = bool(state.get("flashlight_on", False))
-    state["inventory"] = list(state.get("inventory", []))
+    
+    # Asegurar que inventory y journal sean listas
+    inv = state.get("inventory")
+    state["inventory"] = list(inv) if isinstance(inv, list) else []
+    
     state["game_won"] = bool(state.get("game_won", False))
-    state["journal"] = list(state.get("journal", []))
+    
+    jrnl = state.get("journal")
+    state["journal"] = list(jrnl) if isinstance(jrnl, list) else []
     target_lang = body.language
 
     # 1. Resolución de Idioma (Prioridad: Detección -> Estado -> Target -> Default)
@@ -471,8 +491,11 @@ def process_command(body: CommandRequest, request: Request, background_tasks: Ba
     # Le pasamos el idioma detectado por keywords si existe, si no "auto" para que el LLM detecte sin sesgos.
     llm_provisional_lang = new_detected or "auto"
     
+    # 1. Resolución de historial
+    history_str = get_history_context(state.get("journal", []))
+    
     room_desc = describe_room(state, language=session_lang or "es") 
-    llm_result = llm_parser.parse_command_llm(text, llm_provisional_lang, room_desc)
+    llm_result = llm_parser.parse_command_llm(text, llm_provisional_lang, room_desc, history=history_str)
     
     # 1.1 Fallback local si el LLM falla o no está configurado
     if not llm_result:
@@ -554,10 +577,9 @@ def process_command(body: CommandRequest, request: Request, background_tasks: Ba
                 state["inventory"] = inventory
                 reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["pickup_flashlight"]
                 
-                msg = "Has encontrado una linterna para guiarte en la oscuridad."
-                if detected_lang != "es":
-                    msg = llm_parser.translate_reply(msg, detected_lang)
-                add_journal_entry(state, msg)
+                # Registrar en diario
+                room_name = state.get("room_name") or "una sala"
+                add_journal_entry(state, f"Recogí la linterna en {room_name}")
             else:
                 reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["already_have_flashlight"]
         else:
@@ -587,11 +609,6 @@ def process_command(body: CommandRequest, request: Request, background_tasks: Ba
                     reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_off"]
                 else:
                     reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_already_off"]
-                state["flashlight_on"] = not state.get("flashlight_on")
-                if state["flashlight_on"]:
-                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_on"]
-                else:
-                    reply = llm_parser.MESSAGES.get(detected_lang, llm_parser.MESSAGES["es"])["light_off"]
 
     elif intent == "inventory" or "inventario" in text.lower() or "inventaire" in text.lower() or "inventar" in text.lower():
         inventory = state.get("inventory", [])
@@ -675,6 +692,10 @@ def process_command(body: CommandRequest, request: Request, background_tasks: Ba
                         save_rooms() # Persistir cambios
 
             state["room"] = new_room_id
+            
+            # Registrar en diario
+            room_name = ROOMS.get(new_room_id, {}).get("name", "una nueva sala")
+            add_journal_entry(state, f"Me moví al {direction} hacia {room_name}")
             
             # Actualizar coordenadas para el minimapa
             new_room_data = ROOMS.get(new_room_id, {})
