@@ -62,16 +62,29 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
 def get_db_connection():
     """
-    Obtiene una conexión a la base de datos. 
-    Soporta PostgreSQL si DATABASE_URL está definida (para Render/Heroku),
-    de lo contrario usa SQLite local.
+    Obtiene una conexión a la base de datos.
+    Soporta PostgreSQL si DATABASE_URL está definida, si no SQLite.
     """
     db_url = os.getenv("DATABASE_URL")
     if db_url:
         import psycopg2
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
         return psycopg2.connect(db_url)
     else:
         return sqlite3.connect(DB_PATH)
+
+def db_query(conn, sql: str, params: tuple = ()):
+    """
+    Helper para ejecutar queries independientemente de si es SQLite (?) o Postgres (%s).
+    """
+    is_postgres = not isinstance(conn, sqlite3.Connection)
+    if is_postgres:
+        sql = sql.replace("?", "%s")
+    
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    return cur
 
 
 def _init_db() -> None:
@@ -89,6 +102,27 @@ def _init_db() -> None:
             """
         )
         # Tabla de partidas vinculada a usuario
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS saves (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+            """
+        )
+        # Tabla de habitaciones procedimentales (para evitar pérdida en FS efímero)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dungeon_rooms (
+                id TEXT PRIMARY KEY,
+                data_json TEXT NOT NULL
+            )
+            """
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS saves (
@@ -346,11 +380,52 @@ def get_history_context(journal: list) -> str:
     return " | ".join(journal)
 
 def save_rooms():
+    """
+    Guarda ROOMS en la base de datos en lugar de en un JSON local.
+    """
+    conn = get_db_connection()
     try:
-        with open(ROOMS_FILE, "w", encoding="utf-8") as f:
-            json.dump(ROOMS, f, indent=4, ensure_ascii=False)
+        cur = conn.cursor()
+        for room_id, data in ROOMS.items():
+            db_query(conn, 
+                "INSERT INTO dungeon_rooms (id, data_json) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data_json = excluded.data_json",
+                (room_id, json.dumps(data, ensure_ascii=False))
+            )
+        conn.commit()
     except Exception as e:
-        logger.error(f"Error guardando salas: {e}")
+        logger.error(f"Error guardando salas en DB: {e}")
+    finally:
+        conn.close()
+
+def load_rooms():
+    """
+    Carga ROOMS desde la base de datos. Si no hay nada, intenta migrar desde rooms.json.
+    """
+    global ROOMS
+    conn = get_db_connection()
+    try:
+        cur = db_query(conn, "SELECT id, data_json FROM dungeon_rooms")
+        rows = cur.fetchall()
+        if rows:
+            for row in rows:
+                ROOMS[row[0]] = json.loads(row[1])
+            logger.info(f"Cargadas {len(ROOMS)} salas desde la base de datos.")
+            return
+
+        # Si no hay salas en la DB, intentar migrar desde el archivo JSON si existe
+        if os.path.exists(ROOMS_FILE):
+            try:
+                with open(ROOMS_FILE, "r", encoding="utf-8") as f:
+                    file_data = json.load(f)
+                    ROOMS.update(file_data)
+                logger.info(f"Migrando {len(ROOMS)} salas desde archivo JSON a la base de datos...")
+                save_rooms() # Guardar en DB inmediatamente
+            except Exception as e:
+                logger.error(f"Error migrando rooms.json: {e}")
+    except Exception as e:
+        logger.error(f"Error cargando salas de la DB: {e}")
+    finally:
+        conn.close()
 
 # Cargar salas al inicio
 load_rooms()
@@ -830,7 +905,7 @@ def save_game(body: SaveGameIn, request: Request, user: dict = Depends(get_curre
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute(
+        db_query(conn,
             "INSERT INTO saves (id, user_id, state_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
             (save_id, user["id"], json.dumps(body.state, ensure_ascii=False), now, now),
         )

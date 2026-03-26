@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: voice-in-the-dungeon
+    env: docker
+    plan: free # Puedes cambiarlo a 'starter' para evitar que se 'duerma'
+    region: frankfurt
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATA_DIR
+        value: "/app/data"
