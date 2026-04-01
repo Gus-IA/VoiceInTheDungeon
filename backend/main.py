@@ -48,7 +48,7 @@ if not logger.handlers:
     )
 
 
-app = FastAPI()
+# app = FastAPI() ya está inicializado arriba con los handlers de error
 
 app.add_middleware(
     CORSMiddleware,
@@ -211,6 +211,10 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "db": "unknown"}
 
 @app.post("/api/register")
 def register(user: UserCreate):
