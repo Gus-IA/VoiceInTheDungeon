@@ -11,11 +11,12 @@ import sqlite3
 from typing import Any, cast
 
 # Asegurar que el directorio 'backend' esté en el path para los imports
+import traceback
 sys.path.append(str(Path(__file__).parent))
 
 from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -29,6 +30,17 @@ from typing import Any
 load_dotenv()
 
 logger = logging.getLogger("voice_in_the_dungeon")
+app = FastAPI(title="Voice in the Dungeon API")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_msg = traceback.format_exc()
+    logger.error(f"Global error: {error_msg}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": error_msg if os.getenv("DEBUG") else None}
+    )
+
 if not logger.handlers:
     logging.basicConfig(
         level=logging.INFO,
@@ -65,14 +77,23 @@ def get_db_connection():
     Obtiene una conexión a la base de datos.
     Soporta PostgreSQL si DATABASE_URL está definida, si no SQLite.
     """
-    db_url = os.getenv("DATABASE_URL")
-    if db_url:
-        import psycopg2
-        if db_url.startswith("postgres://"):
-            db_url = db_url.replace("postgres://", "postgresql://", 1)
-        return psycopg2.connect(db_url)
-    else:
-        return sqlite3.connect(DB_PATH)
+    try:
+        db_url = os.getenv("DATABASE_URL")
+        if db_url:
+            import psycopg2
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://", 1)
+            # Asegurar sslmode para Neon
+            if "?" not in db_url:
+                db_url += "?sslmode=require"
+            elif "sslmode" not in db_url:
+                db_url += "&sslmode=require"
+            return psycopg2.connect(db_url)
+        else:
+            return sqlite3.connect(DB_PATH)
+    except Exception as e:
+        logger.error(f"CRITICAL: Error conectando a la DB: {e}")
+        raise e
 
 def db_query(conn, sql: str, params: tuple = ()):
     """
