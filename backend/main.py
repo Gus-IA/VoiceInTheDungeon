@@ -91,7 +91,7 @@ def _init_db() -> None:
     conn = get_db_connection()
     try:
         # Tabla de usuarios
-        conn.execute(
+        db_query(conn,
             """
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
@@ -102,7 +102,7 @@ def _init_db() -> None:
             """
         )
         # Tabla de partidas vinculada a usuario
-        conn.execute(
+        db_query(conn,
             """
             CREATE TABLE IF NOT EXISTS saves (
                 id TEXT PRIMARY KEY,
@@ -115,23 +115,11 @@ def _init_db() -> None:
             """
         )
         # Tabla de habitaciones procedimentales (para evitar pérdida en FS efímero)
-        conn.execute(
+        db_query(conn,
             """
             CREATE TABLE IF NOT EXISTS dungeon_rooms (
                 id TEXT PRIMARY KEY,
                 data_json TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS saves (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                state_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users (id)
             )
             """
         )
@@ -162,8 +150,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     
     conn = get_db_connection()
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT id, username FROM users WHERE username = ?", (username,))
+        cur = db_query(conn, "SELECT id, username FROM users WHERE username = ?", (username,))
         user = cur.fetchone()
         if user is None:
             raise HTTPException(
@@ -208,8 +195,7 @@ class UserCreate(BaseModel):
 def register(user: UserCreate):
     conn = get_db_connection()
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM users WHERE username = ?", (user.username,))
+        cur = db_query(conn, "SELECT id FROM users WHERE username = ?", (user.username,))
         if cur.fetchone():
             raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
         
@@ -217,7 +203,7 @@ def register(user: UserCreate):
         hashed_pw = auth.get_password_hash(user.password)
         now = datetime.now(timezone.utc).isoformat() + "Z"
         
-        conn.execute(
+        db_query(conn,
             "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
             (user_id, user.username, hashed_pw, now),
         )
@@ -231,8 +217,7 @@ def register(user: UserCreate):
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     conn = get_db_connection()
     try:
-        cur = conn.cursor()
-        cur.execute(
+        cur = db_query(conn,
             "SELECT id, username, password_hash FROM users WHERE username = ?", (form_data.username,)
         )
         user = cur.fetchone()
@@ -936,8 +921,7 @@ def load_game(save_id: str, request: Request, user: dict = Depends(get_current_u
     """
     conn = get_db_connection()
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT state_json, user_id FROM saves WHERE id = ?", (save_id,))
+        cur = db_query(conn, "SELECT state_json, user_id FROM saves WHERE id = ?", (save_id,))
         row = cur.fetchone()
     finally:
         conn.close()
