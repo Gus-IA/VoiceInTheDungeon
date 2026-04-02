@@ -1,5 +1,7 @@
 # 🏰 Voice in the Dungeon
 
+** Proyecto realizado completamente usando vibe coding**
+
 **Voice in the Dungeon** es una aventura de rol (RPG) controlada íntegramente por voz, donde la narrativa y el mundo se generan en tiempo real gracias a la Inteligencia Artificial.
 
 🎮 **[¡Pruébalo aquí!](https://voice-in-the-dungeon.onrender.com/)**
